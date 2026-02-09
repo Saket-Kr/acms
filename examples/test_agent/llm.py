@@ -44,7 +44,7 @@ class OllamaClient:
 
     def __init__(self, config: OllamaConfig) -> None:
         self.config = config
-        self._client = httpx.AsyncClient(timeout=120.0)
+        self._client = httpx.AsyncClient(timeout=300.0)  # 5 min timeout for longer conversations
 
     async def close(self) -> None:
         """Close the HTTP client."""
