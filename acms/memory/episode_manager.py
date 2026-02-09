@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from acms.models import Episode, EpisodeStatus, Role, Turn
 from acms.utils import generate_episode_id
@@ -11,6 +11,9 @@ from acms.utils import generate_episode_id
 if TYPE_CHECKING:
     from acms.core.config import ACMSConfig
     from acms.storage import StorageBackend
+
+# Type alias for episode close callback
+OnEpisodeClosedCallback = Callable[[str], Awaitable[None]]
 
 
 class EpisodeManager:
@@ -33,6 +36,18 @@ class EpisodeManager:
         self._config = config
         self._current_episode: Episode | None = None
         self._last_turn_time: datetime | None = None
+        self._on_episode_closed: OnEpisodeClosedCallback | None = None
+
+    def set_on_episode_closed(self, callback: OnEpisodeClosedCallback | None) -> None:
+        """Set callback to be invoked when any episode closes.
+
+        The callback receives the closed episode ID and is called for both
+        manual closes and automatic closes (boundary rules).
+
+        Args:
+            callback: Async function that takes episode_id as argument
+        """
+        self._on_episode_closed = callback
 
     @property
     def current_episode(self) -> Episode | None:
@@ -151,6 +166,8 @@ class EpisodeManager:
     ) -> str | None:
         """Close the current episode.
 
+        Invokes the on_episode_closed callback if set.
+
         Args:
             reason: Reason for closing
 
@@ -169,6 +186,10 @@ class EpisodeManager:
         await self._storage.update_episode(self._current_episode)
         self._current_episode = None
         self._last_turn_time = None
+
+        # Invoke callback for reflection or other processing
+        if self._on_episode_closed is not None:
+            await self._on_episode_closed(episode_id)
 
         return episode_id
 

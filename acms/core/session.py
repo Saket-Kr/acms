@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from acms.core.config import ACMSConfig
 from acms.errors import ValidationError
-from acms.memory import EpisodeManager, IngestionPipeline, RecallPipeline
+from acms.memory import EpisodeManager, IngestionPipeline, RecallPipeline, ReflectionRunner
 from acms.models import ContextItem, Role, SessionStats
 from acms.providers import Embedder, NullEmbedder, NullReflector, Reflector
 from acms.storage import StorageBackend
@@ -80,6 +80,7 @@ class ACMS:
         self._episode_manager: EpisodeManager | None = None
         self._ingestion: IngestionPipeline | None = None
         self._recall: RecallPipeline | None = None
+        self._reflection_runner: ReflectionRunner | None = None
         self._initialized = False
         self._closed = False
 
@@ -119,6 +120,19 @@ class ACMS:
             self._config,
         )
         await self._episode_manager.initialize()
+
+        # Initialize reflection runner
+        self._reflection_runner = ReflectionRunner(
+            self._session_id,
+            self._storage,
+            self._reflector,
+            self._embedder,
+            self._token_counter,
+            self._config,
+        )
+
+        # Wire episode close callback to trigger reflection
+        self._episode_manager.set_on_episode_closed(self._handle_episode_closed)
 
         # Initialize pipelines
         self._ingestion = IngestionPipeline(
@@ -240,7 +254,7 @@ class ACMS:
     ) -> str | None:
         """Manually close the current episode.
 
-        Triggers reflection if enabled.
+        Triggers reflection via the episode close callback if enabled.
 
         Args:
             reason: Reason for closing
@@ -251,54 +265,38 @@ class ACMS:
         self._ensure_initialized()
         assert self._episode_manager is not None
 
-        episode_id = await self._episode_manager.close_current_episode(reason)
+        # Reflection is triggered via the on_episode_closed callback
+        # that was wired during initialize()
+        return await self._episode_manager.close_current_episode(reason)
 
-        # Trigger reflection if enabled
-        if episode_id and self._config.reflection.enabled:
-            await self._run_reflection(episode_id)
+    async def _handle_episode_closed(self, episode_id: str) -> None:
+        """Handle episode close event by running reflection.
 
-        return episode_id
+        This callback is invoked by EpisodeManager whenever an episode closes,
+        whether manually or automatically via boundary rules.
 
-    async def _run_reflection(self, episode_id: str) -> None:
-        """Run reflection on a closed episode."""
+        Args:
+            episode_id: The closed episode's ID
+        """
+        if not self._config.reflection.enabled:
+            return
+
+        if self._reflection_runner is None:
+            return
+
         try:
             episode = await self._storage.get_episode(episode_id)
             if not episode:
                 return
 
-            # Check minimum turns
-            if episode.turn_count < self._config.reflection.min_episode_turns:
-                return
-
             turns = await self._storage.get_turns_by_episode(episode_id)
-            facts = await self._reflector.reflect(episode, turns)
 
-            # Save facts
-            for fact in facts[: self._config.reflection.max_facts_per_episode]:
-                if fact.confidence >= self._config.reflection.min_confidence:
-                    # Count tokens
-                    fact.token_count = self._token_counter.count(fact.content)
-
-                    # Generate embedding for fact
-                    if fact.content:
-                        embeddings = await self._embedder.embed([fact.content])
-                        if embeddings:
-                            from acms.utils import generate_embedding_id
-
-                            emb_id = generate_embedding_id()
-                            await self._storage.save_embedding(
-                                id=emb_id,
-                                embedding=embeddings[0],
-                                metadata={
-                                    "session_id": self._session_id,
-                                    "episode_id": episode_id,
-                                    "fact_id": fact.id,
-                                    "type": "fact",
-                                },
-                            )
-                            fact.embedding_id = emb_id
-
-                    await self._storage.save_fact(fact)
+            # ReflectionRunner handles min_episode_turns check internally
+            await self._reflection_runner.reflect_episode(
+                episode,
+                turns,
+                background=False,  # Run synchronously for now
+            )
 
         except Exception:
             # Reflection failures should not crash ACMS
@@ -337,8 +335,12 @@ class ACMS:
             return
 
         if self._initialized:
-            # Close current episode
+            # Close current episode (triggers reflection via callback)
             await self.close_episode(reason="session_close")
+
+            # Wait for any pending background reflection tasks
+            if self._reflection_runner:
+                await self._reflection_runner.wait_pending()
 
             # Close storage
             await self._storage.close()
