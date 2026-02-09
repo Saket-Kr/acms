@@ -1,0 +1,215 @@
+"""ACMS configuration."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import Any
+
+from acms.cache import CacheConfig
+from acms.errors import ConfigurationError
+from acms.models.types import DEFAULT_MARKER_WEIGHTS, MarkerType
+
+
+@dataclass(frozen=True, slots=True)
+class EpisodeBoundaryConfig:
+    """Configuration for automatic episode boundaries."""
+
+    max_turns: int = 6
+    """Close episode after this many turns."""
+
+    max_time_gap_seconds: int = 1800  # 30 minutes
+    """Close episode if gap between turns exceeds this."""
+
+    close_on_tool_result: bool = True
+    """Close episode after a tool result."""
+
+    close_on_patterns: tuple[str, ...] = (
+        r"(?i)\b(done|finished|complete|thanks|thank you)\b",
+    )
+    """Regex patterns that trigger episode closure."""
+
+    def should_close_on_content(self, content: str) -> bool:
+        """Check if content matches any closure pattern."""
+        for pattern in self.close_on_patterns:
+            if re.search(pattern, content):
+                return True
+        return False
+
+
+@dataclass(frozen=True, slots=True)
+class RecallConfig:
+    """Configuration for recall behavior."""
+
+    default_token_budget: int = 4000
+    """Default token budget when not specified."""
+
+    current_episode_budget_pct: float = 0.4
+    """Percentage of budget reserved for current episode (0-1)."""
+
+    max_vector_results: int = 50
+    """Maximum results from vector search."""
+
+    min_relevance_threshold: float = 0.0
+    """Minimum relevance score to include in results."""
+
+    def validate(self) -> None:
+        """Validate configuration values."""
+        if self.current_episode_budget_pct < 0 or self.current_episode_budget_pct > 1:
+            raise ConfigurationError(
+                f"current_episode_budget_pct must be between 0 and 1, "
+                f"got {self.current_episode_budget_pct}"
+            )
+        if self.max_vector_results <= 0:
+            raise ConfigurationError(
+                f"max_vector_results must be positive, got {self.max_vector_results}"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class ReflectionConfig:
+    """Configuration for reflection (L2 fact extraction)."""
+
+    enabled: bool = True
+    """Whether reflection is enabled."""
+
+    min_episode_turns: int = 2
+    """Minimum turns in episode to trigger reflection."""
+
+    max_facts_per_episode: int = 5
+    """Maximum facts to extract per episode."""
+
+    min_confidence: float = 0.7
+    """Minimum confidence score for extracted facts."""
+
+
+@dataclass(slots=True)
+class ACMSConfig:
+    """Main configuration for ACMS.
+
+    Controls all aspects of context management behavior.
+    """
+
+    # Marker settings
+    auto_detect_markers: bool = True
+    """Whether to auto-detect markers from content patterns."""
+
+    marker_weights: dict[str, float] = field(
+        default_factory=lambda: dict(DEFAULT_MARKER_WEIGHTS)
+    )
+    """Weights for marker types in scoring."""
+
+    # Episode settings
+    episode_boundary: EpisodeBoundaryConfig = field(
+        default_factory=EpisodeBoundaryConfig
+    )
+    """Episode boundary detection configuration."""
+
+    # Recall settings
+    recall: RecallConfig = field(default_factory=RecallConfig)
+    """Recall behavior configuration."""
+
+    # Reflection settings
+    reflection: ReflectionConfig = field(default_factory=ReflectionConfig)
+    """Reflection (L2) configuration."""
+
+    # Cache settings
+    cache: CacheConfig = field(default_factory=CacheConfig)
+    """Cache layer configuration."""
+
+    # Misc settings
+    max_content_length: int = 100_000
+    """Maximum content length per turn (characters)."""
+
+    def validate(self) -> None:
+        """Validate the entire configuration.
+
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
+        # Validate marker weights
+        for marker_type in MarkerType:
+            if marker_type.value not in self.marker_weights:
+                self.marker_weights[marker_type.value] = DEFAULT_MARKER_WEIGHTS.get(
+                    marker_type.value, 0.2
+                )
+
+        for marker, weight in self.marker_weights.items():
+            if weight < 0:
+                raise ConfigurationError(
+                    f"Marker weight must be non-negative, got {weight} for {marker}"
+                )
+
+        # Validate sub-configs
+        self.recall.validate()
+
+        # Validate content length
+        if self.max_content_length <= 0:
+            raise ConfigurationError(
+                f"max_content_length must be positive, got {self.max_content_length}"
+            )
+
+    def get_marker_weight(self, marker: str) -> float:
+        """Get weight for a marker.
+
+        Args:
+            marker: Marker string
+
+        Returns:
+            Weight value (uses default for custom markers)
+        """
+        if marker in self.marker_weights:
+            return self.marker_weights[marker]
+        # Default weight for custom markers
+        return 0.2
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize configuration to dictionary."""
+        return {
+            "auto_detect_markers": self.auto_detect_markers,
+            "marker_weights": self.marker_weights,
+            "episode_boundary": {
+                "max_turns": self.episode_boundary.max_turns,
+                "max_time_gap_seconds": self.episode_boundary.max_time_gap_seconds,
+                "close_on_tool_result": self.episode_boundary.close_on_tool_result,
+                "close_on_patterns": list(self.episode_boundary.close_on_patterns),
+            },
+            "recall": {
+                "default_token_budget": self.recall.default_token_budget,
+                "current_episode_budget_pct": self.recall.current_episode_budget_pct,
+                "max_vector_results": self.recall.max_vector_results,
+                "min_relevance_threshold": self.recall.min_relevance_threshold,
+            },
+            "reflection": {
+                "enabled": self.reflection.enabled,
+                "min_episode_turns": self.reflection.min_episode_turns,
+                "max_facts_per_episode": self.reflection.max_facts_per_episode,
+                "min_confidence": self.reflection.min_confidence,
+            },
+            "cache": {
+                "enabled": self.cache.enabled,
+                "max_turns": self.cache.max_turns,
+                "max_episodes": self.cache.max_episodes,
+                "max_embeddings": self.cache.max_embeddings,
+                "max_facts": self.cache.max_facts,
+                "ttl_seconds": self.cache.ttl_seconds,
+            },
+            "max_content_length": self.max_content_length,
+        }
+
+
+def create_config(**kwargs: Any) -> ACMSConfig:
+    """Create an ACMSConfig with validation.
+
+    Args:
+        **kwargs: Configuration options
+
+    Returns:
+        Validated ACMSConfig
+
+    Raises:
+        ConfigurationError: If configuration is invalid
+    """
+    config = ACMSConfig(**kwargs)
+    config.validate()
+    return config

@@ -28,6 +28,11 @@ Build a production-grade Python SDK for session-scoped agent context management.
 | API style | Async-first | Native async, fits modern agent frameworks |
 | Error handling | Custom exception hierarchy | Typed errors, retryable vs fatal |
 | Logging | Structured logging | JSON-compatible, correlation IDs |
+| Embedding timing | Await during ingest | Correctness over latency; extensible for fire-and-forget later |
+| Session model | One ACMS instance = one session | Simpler, cleaner isolation |
+| Caching | Built-in LRU cache | In-memory cache in front of storage for hot data |
+
+**Core Principle:** Correctness > Latency. The system must be useful and reliable first.
 
 ---
 
@@ -124,6 +129,11 @@ acms/
 │   ├── __init__.py
 │   └── exceptions.py           # Full exception hierarchy
 │
+├── cache/
+│   ├── __init__.py
+│   ├── lru.py                  # LRU cache implementation
+│   └── config.py               # CacheConfig
+│
 ├── utils/
 │   ├── __init__.py
 │   ├── tokens.py               # Token counting implementations
@@ -182,13 +192,21 @@ class ACMS:
         content: str,
         *,
         actor_id: str | None = None,
+        markers: list[str] | None = None,  # ["decision", "constraint", "failure", "goal"]
         metadata: dict[str, Any] | None = None,
     ) -> str:
         """
         Ingest a turn into memory.
 
+        Args:
+            role: Who produced this turn (user, assistant, tool)
+            content: The turn content
+            actor_id: Optional identifier for the actor
+            markers: Optional importance markers (decision, constraint, failure, goal, custom:*)
+            metadata: Optional arbitrary metadata
+
         Returns turn_id. Raises ValidationError on invalid input.
-        Target latency: <5ms (excluding network I/O for embedding).
+        Embedding happens synchronously (correctness > latency).
         """
 
     async def recall(
@@ -436,33 +454,182 @@ class EpisodeBoundaryConfig:
 
 ---
 
+## Markers (Lightweight Importance Signals)
+
+Markers provide correctness benefits without requiring full LLM reflection. Critical turns are prioritized in recall regardless of when they occurred.
+
+### Marker Types (Enum)
+
+```python
+from enum import Enum
+
+class MarkerType(str, Enum):
+    """Built-in marker types with default boost weights."""
+    DECISION = "decision"      # Choices made - maintain consistency
+    CONSTRAINT = "constraint"  # Limitations/requirements - always relevant
+    FAILURE = "failure"        # What didn't work - prevent repeated attempts
+    GOAL = "goal"              # Task objectives - anchor for relevance
+```
+
+### Default Boost Weights
+
+| Marker | Default Boost | Rationale |
+|--------|---------------|-----------|
+| `constraint` | 0.4 | Constraints are critical - violating them = failure |
+| `decision` | 0.3 | Decisions drive consistency |
+| `goal` | 0.3 | Goals anchor relevance |
+| `failure` | 0.2 | Failures prevent waste but less critical |
+| `custom:*` | 0.2 | Conservative default for custom markers |
+
+Weights are configurable via `ACMSConfig.marker_weights`.
+
+### Explicit Marking
+
+```python
+await acms.ingest(
+    role="assistant",
+    content="Using PostgreSQL for the database",
+    markers=[MarkerType.DECISION],  # Type-safe
+)
+
+# Custom markers also allowed
+await acms.ingest(
+    role="user",
+    content="Remember this",
+    markers=["custom:important"],
+)
+```
+
+### Auto-Detection (Default: Enabled)
+
+ACMS auto-detects markers from content patterns. Can be disabled via `ACMSConfig.auto_detect_markers = False`.
+
+| Pattern | Detected Marker |
+|---------|-----------------|
+| `Decision:`, `Decided:`, `Choosing:`, `Selected:` | `decision` |
+| `Constraint:`, `Requirement:`, `Must:`, `Cannot:`, `Budget:`, `Limit:` | `constraint` |
+| `Failed:`, `Error:`, `Didn't work:`, `Tried but:` | `failure` |
+| `Goal:`, `Objective:`, `Task:`, `Need to:` | `goal` |
+
+**Pattern matching rules:**
+- Case-insensitive
+- Must appear at start of content or after newline
+- Explicit markers override auto-detected ones
+
+---
+
 ## Recall Algorithm
 
+**Key design:** No recency scoring. Current episode provides implicit recency; past turns compete on relevance + markers only.
+
 ```
-┌─────────────────────────────────────────┐
-│           Recall Pipeline               │
-├─────────────────────────────────────────┤
-│ 1. Embed query                          │
-│    └── embedder.embed([query])          │
-├─────────────────────────────────────────┤
-│ 2. Gather candidates                    │
-│    ├── Current episode turns (if flag)  │
-│    ├── Vector search on past turns      │
-│    └── L2 facts (if available)          │
-├─────────────────────────────────────────┤
-│ 3. Score candidates                     │
-│    └── score = w1*relevance +           │
-│              w2*recency +               │
-│              w3*episode_coherence       │
-├─────────────────────────────────────────┤
-│ 4. Budget allocation                    │
-│    └── Greedy select by score until     │
-│        token_budget exhausted           │
-├─────────────────────────────────────────┤
-│ 5. Assemble context                     │
-│    └── Order by timestamp, format       │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    Recall Pipeline                          │
+├─────────────────────────────────────────────────────────────┤
+│ 1. Embed query                                              │
+│    └── embedder.embed([query])                              │
+├─────────────────────────────────────────────────────────────┤
+│ 2. Gather candidates (4 sources)                            │
+│    ├── [ALWAYS] Current episode turns (implicit recency)    │
+│    ├── [PRIORITY] Marked turns from past episodes           │
+│    ├── [IF ENABLED] L2 facts                                │
+│    └── [SEARCH] Vector search on past unmarked turns        │
+├─────────────────────────────────────────────────────────────┤
+│ 3. Score candidates (NO RECENCY)                            │
+│                                                             │
+│    For past turns:                                          │
+│    score = relevance + marker_boost                         │
+│                                                             │
+│    Where:                                                   │
+│    - relevance = cosine_similarity(query_emb, turn_emb)     │
+│    - marker_boost = sum(weights[marker] for marker in turn) │
+│                                                             │
+│    Current episode: not scored, always included first       │
+├─────────────────────────────────────────────────────────────┤
+│ 4. Budget allocation                                        │
+│                                                             │
+│    Step 1: Reserve for current episode                      │
+│            (up to current_episode_budget_pct, default 40%)  │
+│                                                             │
+│    Step 2: Include marked turns by score                    │
+│            (constrained by remaining budget)                │
+│                                                             │
+│    Step 3: Fill remaining with L2 facts + vector results    │
+│            (by score until budget exhausted)                │
+├─────────────────────────────────────────────────────────────┤
+│ 5. Handle edge cases                                        │
+│    ├── Current episode > budget: truncate oldest turns,     │
+│    │   keep most recent + any marked turns in episode       │
+│    ├── No relevant results: return current episode only     │
+│    └── Marked turns exceed budget: include by score,        │
+│        log warning about overflow                           │
+├─────────────────────────────────────────────────────────────┤
+│ 6. Assemble context                                         │
+│    Order: L2 facts → marked past turns → current episode    │
+│    (chronological within each group)                        │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+### Why No Recency?
+
+| Concern | How ACMS Handles It |
+|---------|---------------------|
+| Recent context matters | Current episode always included first |
+| Old decisions still relevant | Markers boost old important turns |
+| Don't repeat old failures | Failure markers surface old mistakes |
+| Semantic drift over time | Vector search finds relevant old content |
+
+### What Agents Need vs. How ACMS Provides It
+
+| Agent Need | ACMS Feature | Confidence |
+|------------|--------------|------------|
+| Task continuity | Current episode + goal markers | High |
+| Decision history | Decision markers + L2 facts | High |
+| Constraint awareness | Constraint markers + L2 facts | High |
+| Failure memory | Failure markers + L2 facts | High |
+| Current state | Current episode always included | High |
+
+---
+
+## Cache Layer
+
+Built-in LRU cache sits between ACMS and storage backend for hot data access.
+
+```python
+@dataclass
+class CacheConfig:
+    """Configuration for the in-memory cache."""
+
+    enabled: bool = True
+    max_turns: int = 1000
+    """Maximum number of turns to cache."""
+
+    max_episodes: int = 100
+    """Maximum number of episodes to cache."""
+
+    max_embeddings: int = 1000
+    """Maximum number of embeddings to cache."""
+
+    ttl_seconds: int | None = None
+    """Optional TTL for cache entries. None = no expiry."""
+```
+
+### Cache Behavior
+
+- **Reads**: Check cache first, fall through to storage on miss
+- **Writes**: Write-through (write to both cache and storage)
+- **Invalidation**: LRU eviction when limits reached
+- **Session isolation**: Cache is per-session (one ACMS = one session)
+
+### What Gets Cached
+
+| Data | Cached | Rationale |
+|------|--------|-----------|
+| Current episode turns | Yes | Hot path for recall |
+| Recent embeddings | Yes | Avoid re-computing |
+| Marked turns | Yes | High priority in recall |
+| Old episodes | No | Accessed via vector search |
+| L2 facts | Yes | Small, frequently accessed |
 
 ---
 
@@ -692,12 +859,21 @@ all = ["acms[sqlite,chroma,openai,anthropic,tiktoken]"]
 
 ---
 
+## Resolved Decisions
+
+| Question | Decision |
+|----------|----------|
+| Cache layer | Yes, built-in LRU cache |
+| Async embedding | Await during ingest (correctness first) |
+| Multi-session | One instance = one session |
+| Recency in scoring | No - current episode = implicit recency |
+| Marker types | Enum (MarkerType) with configurable weights |
+| Marker auto-detection | Enabled by default, configurable patterns |
+
 ## Open Questions
 
 1. **Embedding batching** - Should we batch embedding calls? What's the max batch size?
-2. **Cache layer** - Do we need an in-memory LRU cache in front of storage?
-3. **Async embedding** - Fire-and-forget vs. await during ingest?
-4. **Multi-session** - Should one ACMS instance handle multiple sessions?
+2. **Marker persistence** - Should markers survive L0→L1 compaction or be extracted into L2?
 
 ---
 
