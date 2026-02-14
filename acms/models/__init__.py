@@ -1,5 +1,6 @@
 """ACMS data models."""
 
+from acms.models.consolidation import ConsolidationAction, ConsolidationActionType
 from acms.models.episode import Episode
 from acms.models.fact import Fact
 from acms.models.turn import Turn
@@ -20,10 +21,12 @@ __all__ = [
     "Turn",
     "Episode",
     "Fact",
+    "ConsolidationAction",
     # Enums
     "Role",
     "EpisodeStatus",
     "MarkerType",
+    "ConsolidationActionType",
     # Types
     "ContextItem",
     "SessionStats",

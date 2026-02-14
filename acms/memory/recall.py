@@ -141,7 +141,7 @@ class RecallPipeline:
         query_embedding: list[float],
     ) -> list[ScoredCandidate]:
         """Get candidates from L2 facts."""
-        facts = await self._storage.get_facts_by_session(self._session_id)
+        facts = await self._storage.get_active_facts_by_session(self._session_id)
 
         candidates = []
         for fact in facts:

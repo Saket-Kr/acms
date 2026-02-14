@@ -43,6 +43,95 @@ def generate_markdown_report(report: "EvaluationReport", output_path: Path) -> N
         f"- **Optimal conversation length**: {report.optimal_conversation_length} turns\n"
     )
 
+    # ACMS Overhead Analysis
+    lines.append("## ACMS Overhead Analysis\n")
+    if report.overall_avg_acms_overhead_ms > 0:
+        lines.append(
+            f"**ACMS adds ~{report.overall_avg_acms_overhead_ms:.0f}ms per turn on average.**\n"
+        )
+        lines.append(
+            "| Turn Count | Avg ACMS Overhead | Avg (excl. Reflection) "
+            "| Avg Recall | Avg Ingest (User) | Avg Ingest (Asst) |"
+        )
+        lines.append(
+            "|------------|-------------------|------------------------"
+            "|------------|-------------------|-------------------|"
+        )
+        for group in sorted(report.turn_count_groups, key=lambda g: g.turn_count):
+            summaries = [i.latency_summary for i in group.iterations if i.latency_summary]
+            if not summaries:
+                continue
+            n = len(summaries)
+            avg_recall = sum(s.avg_recall_ms for s in summaries) / n
+            avg_ingest_u = sum(s.avg_ingest_user_ms for s in summaries) / n
+            avg_ingest_a = sum(s.avg_ingest_assistant_ms for s in summaries) / n
+            lines.append(
+                f"| {group.turn_count} | {group.avg_acms_overhead_ms:.0f}ms "
+                f"| {group.avg_acms_overhead_ms_excl_reflection:.0f}ms "
+                f"| {avg_recall:.0f}ms | {avg_ingest_u:.0f}ms | {avg_ingest_a:.0f}ms |"
+            )
+        lines.append("")
+    else:
+        lines.append("*No latency data available.*\n")
+
+    # Consolidation Analysis (only if consolidation data is present)
+    has_consolidation = any(
+        i.consolidation_stats
+        for g in report.turn_count_groups
+        for i in g.iterations
+    )
+    if has_consolidation:
+        lines.append("## Consolidation Analysis\n")
+        lines.append(
+            f"**Overall staleness rate: {report.overall_staleness_rate:.1%}** "
+            f"(fraction of probes with stale/superseded keywords in recall)\n"
+        )
+        lines.append(
+            f"**Overall consolidation ratio: {report.overall_consolidation_ratio:.2f}** "
+            f"(superseded / total facts)\n"
+        )
+        lines.append(
+            "| Turn Count | Avg Staleness | Avg Consolidation Ratio "
+            "| Avg Active Facts | Avg Superseded Facts |"
+        )
+        lines.append(
+            "|------------|---------------|-------------------------"
+            "|------------------|----------------------|"
+        )
+        for group in sorted(report.turn_count_groups, key=lambda g: g.turn_count):
+            stats_list = [
+                i.consolidation_stats for i in group.iterations if i.consolidation_stats
+            ]
+            if not stats_list:
+                continue
+            n = len(stats_list)
+            avg_active = sum(s.active_facts_count for s in stats_list) / n
+            avg_superseded = sum(s.superseded_facts_count for s in stats_list) / n
+            lines.append(
+                f"| {group.turn_count} | {group.avg_staleness_rate:.0%} "
+                f"| {group.avg_consolidation_ratio:.2f} "
+                f"| {avg_active:.1f} | {avg_superseded:.1f} |"
+            )
+        lines.append("")
+
+        # Interpretation guide
+        if report.overall_staleness_rate == 0:
+            lines.append(
+                "> ✅ **Consolidation is working correctly** — "
+                "no stale facts appear in recall.\n"
+            )
+        elif report.overall_staleness_rate <= 0.20:
+            lines.append(
+                "> ⚠️ **Minor staleness detected** — "
+                "occasional stale keywords in recall, possibly before reflection has run.\n"
+            )
+        else:
+            lines.append(
+                "> ❌ **Consolidation needs attention** — "
+                "superseded facts are regularly polluting recall. "
+                "Check reflection prompts, episode boundaries, and dedup thresholds.\n"
+            )
+
     # Configuration
     lines.append("## Configuration\n")
     lines.append(f"- Scenario: `{report.config.get('scenario', 'N/A')}`")
@@ -89,7 +178,28 @@ def generate_markdown_report(report: "EvaluationReport", output_path: Path) -> N
             lines.append(f"- Time: {iteration.total_time_seconds:.1f}s")
             lines.append(f"- Episodes closed: {iteration.episodes_closed}")
             lines.append(f"- Facts extracted: {iteration.facts_extracted}")
-            lines.append(f"- Tokens ingested: {iteration.tokens_ingested:,}\n")
+            lines.append(f"- Tokens ingested: {iteration.tokens_ingested:,}")
+
+            if iteration.latency_summary:
+                ls = iteration.latency_summary
+                lines.append(f"- Avg ACMS overhead: {ls.avg_total_acms_ms:.0f}ms/turn")
+                lines.append(
+                    f"- Avg ACMS overhead (excl reflection): "
+                    f"{ls.avg_acms_ms_excluding_reflection:.0f}ms/turn"
+                )
+                lines.append(f"- Reflection turns: {ls.reflection_turn_count}")
+                lines.append(f"- p95 ACMS overhead: {ls.p95_total_acms_ms:.0f}ms")
+
+            if iteration.consolidation_stats:
+                cs = iteration.consolidation_stats
+                lines.append(
+                    f"- Active facts: {cs.active_facts_count}, "
+                    f"Superseded: {cs.superseded_facts_count}, "
+                    f"Consolidation ratio: {cs.consolidation_ratio:.2f}"
+                )
+                lines.append(f"- Staleness rate: {cs.staleness_rate:.0%}")
+
+            lines.append("")
 
             # Probe results
             if iteration.probe_results:
@@ -99,6 +209,15 @@ def generate_markdown_report(report: "EvaluationReport", output_path: Path) -> N
                     lines.append(f"- **Turn {probe.turn_number}**: \"{probe.query}\"")
                     lines.append(f"  - Expected: `{probe.expected_keywords}`")
                     lines.append(f"  - Found: {found_str} (score: {probe.best_score:.3f})")
+                    if probe.excluded_keywords:
+                        if probe.stale_found:
+                            lines.append(
+                                f"  - ❌ Stale keywords present: `{probe.stale_keywords_present}`"
+                            )
+                        else:
+                            lines.append(
+                                f"  - ✅ No stale keywords (excluded: `{probe.excluded_keywords}`)"
+                            )
 
                     if probe.recalled_items:
                         lines.append("  - Recalled content:")
@@ -172,6 +291,31 @@ def generate_markdown_report(report: "EvaluationReport", output_path: Path) -> N
         f"(>85% recall with acceptable variance)"
     )
 
+    # Consolidation recommendations
+    if has_consolidation:
+        if report.overall_staleness_rate > 0.20:
+            lines.append(
+                "- ❌ **Staleness rate is high (>20%)** — consolidation is not effectively "
+                "removing superseded facts from recall. Consider: shorter episodes "
+                "(max_turns_per_episode), stronger consolidation prompts, or lower "
+                "dedup thresholds."
+            )
+        elif report.overall_staleness_rate > 0:
+            lines.append(
+                f"- ⚠️ Staleness rate is {report.overall_staleness_rate:.0%} — "
+                "some superseded facts appear in early probes before consolidation fires."
+            )
+        else:
+            lines.append(
+                "- ✅ Consolidation is working perfectly — zero stale facts in recall."
+            )
+        if report.overall_consolidation_ratio == 0:
+            lines.append(
+                "- ⚠️ Consolidation ratio is 0 — no facts were superseded. "
+                "This may mean episodes are too long for consolidation to trigger, "
+                "or the scenario does not require fact updates."
+            )
+
     lines.append("")
 
     # Footer
@@ -206,18 +350,19 @@ def save_reports(report: "EvaluationReport", output_dir: str) -> tuple[Path, Pat
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Generate timestamp for filenames
+    # Generate timestamp and scenario slug for filenames
     timestamp = report.generated_at.strftime("%Y%m%d_%H%M%S")
+    scenario = report.config.get("scenario", "unknown")
 
-    json_path = output_path / f"evaluation_report_{timestamp}.json"
-    markdown_path = output_path / f"evaluation_summary_{timestamp}.md"
+    json_path = output_path / f"evaluation_report_{scenario}_{timestamp}.json"
+    markdown_path = output_path / f"evaluation_summary_{scenario}_{timestamp}.md"
 
     generate_json_report(report, json_path)
     generate_markdown_report(report, markdown_path)
 
-    # Also save as "latest"
-    latest_json = output_path / "evaluation_report_latest.json"
-    latest_md = output_path / "evaluation_summary_latest.md"
+    # Also save as "latest" (scenario-scoped)
+    latest_json = output_path / f"evaluation_report_{scenario}_latest.json"
+    latest_md = output_path / f"evaluation_summary_{scenario}_latest.md"
 
     generate_json_report(report, latest_json)
     generate_markdown_report(report, latest_md)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
-    from acms.models import Episode, Fact, Turn
+    from acms.models import ConsolidationAction, Episode, Fact, Turn
 
 
 @runtime_checkable
@@ -56,6 +56,40 @@ class Reflector(Protocol):
 
         Raises:
             ProviderError: If reflection fails
+        """
+        ...
+
+
+@runtime_checkable
+class ConsolidatingReflector(Protocol):
+    """Protocol for reflectors that support fact consolidation.
+
+    A consolidating reflector receives prior active facts alongside new
+    episode turns and returns actions (keep/update/add/remove) instead of
+    standalone facts. This enables merging, updating, and removing
+    facts across episodes.
+
+    This protocol is separate from Reflector (Interface Segregation Principle).
+    Reflectors that only implement Reflector continue to work via the
+    legacy path in ReflectionRunner.
+    """
+
+    async def reflect_with_consolidation(
+        self,
+        episode: "Episode",
+        turns: list["Turn"],
+        prior_facts: list["Fact"],
+    ) -> list["ConsolidationAction"]:
+        """Consolidate prior facts with new episode content.
+
+        Args:
+            episode: The episode that just closed.
+            turns: Turns belonging to the episode.
+            prior_facts: Active (non-superseded) facts from previous episodes.
+
+        Returns:
+            List of consolidation actions describing what to do with
+            each prior fact and any new facts to add.
         """
         ...
 

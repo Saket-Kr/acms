@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random as _random_module
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -13,6 +14,8 @@ class ScenarioTurn:
     turn_type: Literal["setup", "filler", "probe"]
     message: str
     expected_keywords: list[str] = field(default_factory=list)
+    excluded_keywords: list[str] = field(default_factory=list)
+    """Keywords that SHOULD NOT appear in recall (stale/superseded values)."""
 
 
 @dataclass
@@ -352,6 +355,121 @@ GOAL_TRACKING = Scenario(
 )
 
 
+PROGRESSIVE_REQUIREMENTS = Scenario(
+    name="progressive_requirements",
+    description="Test fact updates via consolidation — probes check updated facts, not originals",
+    turns={
+        # Phase 1: Establish initial facts
+        1: ScenarioTurn(
+            "setup",
+            "We're building a web app. The database will be PostgreSQL and the API style is REST.",
+            [],
+        ),
+        2: ScenarioTurn(
+            "setup",
+            "For authentication, we'll use JWT tokens. The frontend framework is React.",
+            [],
+        ),
+        # Phase 2: Change database and auth (PostgreSQL→MySQL, JWT→OAuth2)
+        6: ScenarioTurn(
+            "setup",
+            "Actually, let's switch the database from PostgreSQL to MySQL. Our hosting provider has better MySQL support.",
+            [],
+        ),
+        7: ScenarioTurn(
+            "setup",
+            "Also, we're dropping JWT in favor of OAuth2 with Google as the identity provider.",
+            [],
+        ),
+        # Probe: verify UPDATED facts (MySQL, OAuth2) — not stale (PostgreSQL, JWT)
+        10: ScenarioTurn(
+            "probe",
+            "What database are we using?",
+            ["MySQL"],
+            ["PostgreSQL"],
+        ),
+        12: ScenarioTurn(
+            "probe",
+            "How does authentication work in our app?",
+            ["OAuth2", "Google"],
+            ["JWT"],
+        ),
+        14: ScenarioTurn(
+            "probe",
+            "What's our current tech stack?",
+            ["MySQL", "OAuth2", "React", "REST"],
+            ["PostgreSQL", "JWT"],
+        ),
+        # Phase 3: Change API style and add caching (REST→GraphQL, add Redis)
+        18: ScenarioTurn(
+            "setup",
+            "We're moving from REST to GraphQL. The team prefers the flexibility of GraphQL queries.",
+            [],
+        ),
+        19: ScenarioTurn(
+            "setup",
+            "Adding Redis as a caching layer in front of MySQL.",
+            [],
+        ),
+        # Probe: verify latest state includes all changes
+        25: ScenarioTurn(
+            "probe",
+            "What API style are we using?",
+            ["GraphQL"],
+            ["REST"],
+        ),
+        28: ScenarioTurn(
+            "probe",
+            "What caching solution did we pick?",
+            ["Redis"],
+        ),
+        30: ScenarioTurn(
+            "probe",
+            "Summarize our current architecture decisions.",
+            ["MySQL", "GraphQL", "Redis", "OAuth2"],
+            ["PostgreSQL", "REST", "JWT"],
+        ),
+        # Phase 4: One more change — frontend swap (React→Vue)
+        35: ScenarioTurn(
+            "setup",
+            "The team voted to switch from React to Vue.js for the frontend. Easier learning curve.",
+            [],
+        ),
+        # Late probes: verify full updated state persists
+        40: ScenarioTurn(
+            "probe",
+            "What frontend framework are we using?",
+            ["Vue"],
+            ["React"],
+        ),
+        50: ScenarioTurn(
+            "probe",
+            "What's our complete tech stack now?",
+            ["MySQL", "GraphQL", "Redis", "OAuth2", "Vue"],
+            ["PostgreSQL", "REST", "JWT", "React"],
+        ),
+        60: ScenarioTurn(
+            "probe",
+            "What database and API style are we using?",
+            ["MySQL", "GraphQL"],
+            ["PostgreSQL", "REST"],
+        ),
+        70: ScenarioTurn(
+            "probe",
+            "Remind me of all our architecture choices.",
+            ["MySQL", "GraphQL", "Redis", "Vue"],
+            ["PostgreSQL", "REST", "React"],
+        ),
+        80: ScenarioTurn(
+            "probe",
+            "Give me a full summary of the tech decisions we've made.",
+            ["MySQL", "GraphQL", "Redis", "OAuth2", "Vue"],
+            ["PostgreSQL", "REST", "JWT", "React"],
+        ),
+    },
+)
+
+
 # All scenarios
 SCENARIOS: dict[str, Scenario] = {
     "decision_tracking": DECISION_TRACKING,
@@ -359,11 +477,28 @@ SCENARIOS: dict[str, Scenario] = {
     "failure_memory": FAILURE_MEMORY,
     "multi_fact_tracking": MULTI_FACT_TRACKING,
     "goal_tracking": GOAL_TRACKING,
+    "progressive_requirements": PROGRESSIVE_REQUIREMENTS,
 }
 
 
-def get_filler_message(turn_number: int) -> str:
-    """Get a filler message for a turn that has no scenario definition."""
+def get_filler_message(
+    turn_number: int,
+    rng: _random_module.Random | None = None,
+) -> str:
+    """Get a filler message for a turn that has no scenario definition.
+
+    Args:
+        turn_number: The current turn number (used as fallback index if no rng).
+        rng: Optional Random instance for randomized selection. When provided,
+            picks a random filler message instead of using deterministic
+            modulo-based indexing. Use a seeded ``random.Random`` instance
+            for reproducible randomization across evaluation runs.
+
+    Returns:
+        A filler message string.
+    """
+    if rng is not None:
+        return rng.choice(FILLER_MESSAGES)
     return FILLER_MESSAGES[turn_number % len(FILLER_MESSAGES)]
 
 

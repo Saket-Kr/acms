@@ -254,6 +254,35 @@ class StorageBackend(ABC):
         """
         ...
 
+    @abstractmethod
+    async def get_active_facts_by_session(self, session_id: str) -> list["Fact"]:
+        """Get non-superseded facts for a session.
+
+        Returns only facts where superseded_by is None, i.e. facts that
+        have not been replaced or removed by a later consolidation.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            List of active facts in chronological order
+        """
+        ...
+
+    @abstractmethod
+    async def update_fact(self, fact: "Fact") -> None:
+        """Update an existing fact in storage.
+
+        Used during consolidation to set superseded_by on old facts.
+
+        Args:
+            fact: Fact with updated fields
+
+        Raises:
+            StorageError: If update fails
+        """
+        ...
+
     # Statistics
 
     @abstractmethod

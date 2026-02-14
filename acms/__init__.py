@@ -47,6 +47,7 @@ from acms.models import (
     SessionStats,
     Turn,
 )
+from acms.memory.reflection import ReflectionTrace, ReflectionTraceCallback
 from acms.providers import Embedder, NullEmbedder, NullReflector, Reflector, TokenCounter
 from acms.storage import InMemoryBackend, StorageBackend
 
@@ -78,6 +79,9 @@ __all__ = [
     # Null implementations
     "NullEmbedder",
     "NullReflector",
+    # Observability
+    "ReflectionTrace",
+    "ReflectionTraceCallback",
     # Storage
     "StorageBackend",
     "InMemoryBackend",

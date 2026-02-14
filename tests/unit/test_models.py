@@ -181,6 +181,18 @@ class TestFact:
         assert fact.fact_type == MarkerType.DECISION.value
         assert fact.confidence == 1.0
 
+    def test_fact_supersession_defaults(self) -> None:
+        """Test that supersession fields default correctly."""
+        fact = Fact(
+            id="fact_123",
+            session_id="session_1",
+            episode_id="ep_1",
+            content="Some fact",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+        )
+        assert fact.superseded_by is None
+        assert fact.supersedes == []
+
     def test_fact_to_dict(self) -> None:
         """Test fact serialization."""
         fact = Fact(
@@ -197,6 +209,22 @@ class TestFact:
         assert data["id"] == "fact_123"
         assert data["fact_type"] == "constraint"
         assert data["confidence"] == 0.9
+        assert data["superseded_by"] is None
+        assert data["supersedes"] == []
+
+    def test_fact_to_dict_with_supersession(self) -> None:
+        """Test fact serialization with supersession fields set."""
+        fact = Fact(
+            id="fact_new",
+            session_id="session_1",
+            episode_id="ep_2",
+            content="Updated fact",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            supersedes=["fact_old"],
+        )
+        data = fact.to_dict()
+        assert data["supersedes"] == ["fact_old"]
+        assert data["superseded_by"] is None
 
     def test_fact_from_dict(self) -> None:
         """Test fact deserialization."""
@@ -214,6 +242,34 @@ class TestFact:
         assert fact.id == "fact_123"
         assert fact.fact_type == "goal"
         assert fact.confidence == 0.85
+
+    def test_fact_from_dict_with_supersession(self) -> None:
+        """Test deserialization with supersession fields."""
+        data = {
+            "id": "fact_new",
+            "session_id": "session_1",
+            "episode_id": "ep_2",
+            "content": "Updated fact",
+            "created_at": "2024-01-01T12:00:00",
+            "superseded_by": None,
+            "supersedes": ["fact_old"],
+        }
+        fact = Fact.from_dict(data)
+        assert fact.superseded_by is None
+        assert fact.supersedes == ["fact_old"]
+
+    def test_fact_from_dict_backward_compat(self) -> None:
+        """Test deserialization without supersession fields (backward compat)."""
+        data = {
+            "id": "fact_123",
+            "session_id": "session_1",
+            "episode_id": "ep_1",
+            "content": "Old fact",
+            "created_at": "2024-01-01T12:00:00",
+        }
+        fact = Fact.from_dict(data)
+        assert fact.superseded_by is None
+        assert fact.supersedes == []
 
 
 class TestVectorSearchResult:

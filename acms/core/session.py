@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from acms.core.config import ACMSConfig
 from acms.errors import ValidationError
 from acms.memory import EpisodeManager, IngestionPipeline, RecallPipeline, ReflectionRunner
+from acms.memory.reflection import ReflectionTraceCallback
 from acms.models import ContextItem, Role, SessionStats
 from acms.providers import Embedder, NullEmbedder, NullReflector, Reflector
 from acms.storage import StorageBackend
@@ -83,6 +84,7 @@ class ACMS:
         self._reflection_runner: ReflectionRunner | None = None
         self._initialized = False
         self._closed = False
+        self._trace_callback: ReflectionTraceCallback | None = None
 
     @property
     def session_id(self) -> str:
@@ -100,6 +102,20 @@ class ACMS:
         if self._episode_manager:
             return self._episode_manager.current_episode_id
         return None
+
+    def set_trace_callback(self, callback: ReflectionTraceCallback | None) -> None:
+        """Set a callback to receive reflection traces.
+
+        When set, each reflection call emits a ``ReflectionTrace``
+        with full details of inputs, outputs, and timing.
+        Can be called before or after ``initialize()``.
+
+        Args:
+            callback: Function to call with each trace, or None to disable.
+        """
+        self._trace_callback = callback
+        if self._reflection_runner:
+            self._reflection_runner.set_trace_callback(callback)
 
     async def initialize(self) -> None:
         """Initialize ACMS and storage.
@@ -130,6 +146,8 @@ class ACMS:
             self._token_counter,
             self._config,
         )
+        if self._trace_callback:
+            self._reflection_runner.set_trace_callback(self._trace_callback)
 
         # Wire episode close callback to trigger reflection
         self._episode_manager.set_on_episode_closed(self._handle_episode_closed)
@@ -336,7 +354,13 @@ class ACMS:
 
         if self._initialized:
             # Close current episode (triggers reflection via callback)
-            await self.close_episode(reason="session_close")
+            closed_ep_id = await self.close_episode(reason="session_close")
+
+            # Flush any carried turns from short episodes
+            if self._reflection_runner and closed_ep_id:
+                episode = await self._storage.get_episode(closed_ep_id)
+                if episode:
+                    await self._reflection_runner.flush_carried_turns(episode)
 
             # Wait for any pending background reflection tasks
             if self._reflection_runner:

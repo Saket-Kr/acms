@@ -82,6 +82,13 @@ class ReflectionConfig:
     min_confidence: float = 0.7
     """Minimum confidence score for extracted facts."""
 
+    consolidation_similarity_threshold: float = 0.3
+    """Minimum embedding similarity for a prior fact to be included in consolidation scope."""
+
+    dedup_similarity_threshold: float = 0.95
+    """Cosine similarity above which a new fact is considered a duplicate of an existing active fact.
+    Set to 1.0 to disable deduplication."""
+
 
 @dataclass(slots=True)
 class ACMSConfig:
@@ -185,6 +192,8 @@ class ACMSConfig:
                 "min_episode_turns": self.reflection.min_episode_turns,
                 "max_facts_per_episode": self.reflection.max_facts_per_episode,
                 "min_confidence": self.reflection.min_confidence,
+                "consolidation_similarity_threshold": self.reflection.consolidation_similarity_threshold,
+                "dedup_similarity_threshold": self.reflection.dedup_similarity_threshold,
             },
             "cache": {
                 "enabled": self.cache.enabled,

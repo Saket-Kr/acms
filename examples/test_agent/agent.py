@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -10,11 +11,31 @@ from acms.core.config import EpisodeBoundaryConfig, RecallConfig, ReflectionConf
 from acms.storage import get_sqlite_backend
 
 from examples.test_agent.config import SYSTEM_PROMPT, AgentConfig
-from examples.test_agent.llm import Message, OllamaClient, OllamaEmbedder, OllamaReflector
+from examples.test_agent.llm import (
+    Message,
+    OllamaClient,
+    OllamaEmbedder,
+    OllamaReflector,
+    OpenAIChatClient,
+)
 from examples.test_agent.tools import TOOL_DEFINITIONS, ToolExecutor
 
 if TYPE_CHECKING:
     from acms.models import ContextItem
+
+
+@dataclass
+class ChatTimings:
+    """Timing breakdown from a single chat() call.
+
+    All values are in milliseconds, measured with ``time.perf_counter()``
+    for monotonic high-resolution timing.
+    """
+
+    ingest_user_ms: int
+    recall_ms: int
+    ingest_assistant_ms: int
+    ingest_facts_ms: int
 
 
 @dataclass
@@ -24,6 +45,7 @@ class AgentResponse:
     content: str
     recalled_items: list["ContextItem"]
     tool_calls: list[tuple[str, str]]  # (tool_name, result)
+    timings: ChatTimings | None = None
 
 
 class TestAgent:
@@ -32,6 +54,7 @@ class TestAgent:
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
         self._ollama: OllamaClient | None = None
+        self._chat_client: OllamaClient | OpenAIChatClient | None = None
         self._acms: ACMS | None = None
         self._tool_executor: ToolExecutor | None = None
         self._initialized = False
@@ -41,15 +64,19 @@ class TestAgent:
         if self._initialized:
             return
 
-        # Create Ollama client
+        # Create LLM clients
         self._ollama = OllamaClient(self.config.ollama)
+        if self.config.chat_config:
+            self._chat_client = OpenAIChatClient(self.config.chat_config)
+        else:
+            self._chat_client = self._ollama
 
         # Create ACMS components
         SQLiteBackend = get_sqlite_backend()
         storage = SQLiteBackend(self.config.db_path)
 
         embedder = OllamaEmbedder(self._ollama)
-        reflector = OllamaReflector(self._ollama)
+        reflector = OllamaReflector(self._chat_client)
 
         # Configure ACMS
         acms_config = ACMSConfig(
@@ -81,7 +108,7 @@ class TestAgent:
         await self._acms.initialize()
 
         # Create tool executor
-        self._tool_executor = ToolExecutor(self._ollama)
+        self._tool_executor = ToolExecutor(self._chat_client)
 
         self._initialized = True
 
@@ -89,6 +116,8 @@ class TestAgent:
         """Close the agent and release resources."""
         if self._acms:
             await self._acms.close()
+        if self._chat_client and self._chat_client is not self._ollama:
+            await self._chat_client.close()
         if self._ollama:
             await self._ollama.close()
         self._initialized = False
@@ -106,24 +135,28 @@ class TestAgent:
             raise RuntimeError("Agent not initialized. Call initialize() first.")
 
         assert self._acms is not None
-        assert self._ollama is not None
+        assert self._chat_client is not None
         assert self._tool_executor is not None
 
-        # 1. Ingest user message
+        # 1. Ingest user message (timed)
+        t0 = time.perf_counter()
         await self._acms.ingest("user", user_message)
+        ingest_user_ms = int((time.perf_counter() - t0) * 1000)
 
-        # 2. Recall relevant context
+        # 2. Recall relevant context (timed)
+        t0 = time.perf_counter()
         recalled = await self._acms.recall(
             user_message,
             token_budget=self.config.token_budget,
         )
+        recall_ms = int((time.perf_counter() - t0) * 1000)
 
         # 3. Build conversation messages
         messages = self._build_messages(user_message, recalled)
 
-        # 4. Call LLM (with tool loop)
+        # 4. Call LLM (with tool loop) — not timed as ACMS overhead
         tool_calls_made: list[tuple[str, str]] = []
-        response = await self._ollama.chat(messages, tools=TOOL_DEFINITIONS)
+        response = await self._chat_client.chat(messages, tools=TOOL_DEFINITIONS)
 
         # Tool execution loop
         while response.tool_calls:
@@ -160,24 +193,36 @@ class TestAgent:
                 )
 
             # Continue the conversation
-            response = await self._ollama.chat(messages, tools=TOOL_DEFINITIONS)
+            response = await self._chat_client.chat(messages, tools=TOOL_DEFINITIONS)
 
-        # 5. Ingest assistant response with marker detection
+        # 5. Ingest assistant response with marker detection (timed)
+        t0 = time.perf_counter()
         markers = self._detect_explicit_markers(response.content)
         await self._acms.ingest("assistant", response.content, markers=markers)
+        ingest_assistant_ms = int((time.perf_counter() - t0) * 1000)
 
-        # 6. Handle any pending remember facts
+        # 6. Handle any pending remember facts (timed)
+        t0 = time.perf_counter()
         for fact in self._tool_executor.get_pending_facts():
             await self._acms.ingest(
                 "assistant",
                 f"[Remembered] {fact}",
                 markers=["custom:explicit_memory"],
             )
+        ingest_facts_ms = int((time.perf_counter() - t0) * 1000)
+
+        timings = ChatTimings(
+            ingest_user_ms=ingest_user_ms,
+            recall_ms=recall_ms,
+            ingest_assistant_ms=ingest_assistant_ms,
+            ingest_facts_ms=ingest_facts_ms,
+        )
 
         return AgentResponse(
             content=response.content,
             recalled_items=recalled,
             tool_calls=tool_calls_made,
+            timings=timings,
         )
 
     def _build_messages(
@@ -250,3 +295,27 @@ class TestAgent:
         if not self._acms:
             return []
         return await self._acms.recall(query, token_budget=self.config.token_budget)
+
+    async def get_consolidation_stats(self) -> dict[str, int | float] | None:
+        """Get consolidation statistics (active vs superseded facts).
+
+        Returns:
+            Dict with active_facts_count, superseded_facts_count,
+            total_facts_count, consolidation_ratio. Or None if ACMS
+            is not initialized.
+        """
+        if not self._acms:
+            return None
+        storage = self._acms._storage  # noqa: SLF001
+        session_id = self.config.session_id
+        all_facts = await storage.get_facts_by_session(session_id)
+        active_facts = await storage.get_active_facts_by_session(session_id)
+        total = len(all_facts)
+        active = len(active_facts)
+        superseded = total - active
+        return {
+            "active_facts_count": active,
+            "superseded_facts_count": superseded,
+            "total_facts_count": total,
+            "consolidation_ratio": superseded / total if total > 0 else 0.0,
+        }

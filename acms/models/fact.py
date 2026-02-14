@@ -38,6 +38,15 @@ class Fact:
     # Arbitrary metadata
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    # Supersession tracking for fact consolidation.
+    # When a fact is updated/removed during consolidation, superseded_by
+    # points to the replacement fact ID (or a sentinel like "removed_by_<episode_id>").
+    # Active facts have superseded_by=None.
+    superseded_by: str | None = None
+
+    # IDs of prior facts that this fact supersedes (set on UPDATE actions).
+    supersedes: list[str] = field(default_factory=list)
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return {
@@ -51,6 +60,8 @@ class Fact:
             "embedding_id": self.embedding_id,
             "token_count": self.token_count,
             "metadata": self.metadata,
+            "superseded_by": self.superseded_by,
+            "supersedes": self.supersedes,
         }
 
     @classmethod
@@ -67,4 +78,6 @@ class Fact:
             embedding_id=data.get("embedding_id"),
             token_count=data.get("token_count", 0),
             metadata=data.get("metadata", {}),
+            superseded_by=data.get("superseded_by"),
+            supersedes=data.get("supersedes", []),
         )

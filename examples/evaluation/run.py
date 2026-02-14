@@ -12,6 +12,7 @@ from rich.console import Console
 from examples.evaluation.evaluator import Evaluator, EvaluatorConfig
 from examples.evaluation.reporter import save_reports
 from examples.evaluation.scenarios import SCENARIOS
+from examples.test_agent.config import ChatConfig
 
 
 console = Console()
@@ -39,6 +40,9 @@ Examples:
   # Run specific scenario only
   python -m examples.evaluation.run --scenario decision_tracking
 
+  # Run all 6 scenarios sequentially
+  python -m examples.evaluation.run --scenario all --iterations 10
+
   # Quick sanity check (1 iteration, 10 turns only)
   python -m examples.evaluation.run --turns 10 --iterations 1
 
@@ -54,6 +58,7 @@ Available scenarios:
   - failure_memory: Test if failures are remembered to avoid repetition
   - multi_fact_tracking: Test tracking multiple distinct facts
   - goal_tracking: Test if goals and objectives are tracked
+  - progressive_requirements: Test fact updates via consolidation
 """,
     )
 
@@ -84,9 +89,9 @@ Available scenarios:
         "--scenario",
         "-s",
         type=str,
-        choices=list(SCENARIOS.keys()),
-        default="decision_tracking",
-        help="Scenario to run (default: decision_tracking)",
+        choices=["all", *SCENARIOS.keys()],
+        default="progressive_requirements",
+        help="Scenario to run, or 'all' to run every scenario (default: progressive_requirements)",
     )
 
     parser.add_argument(
@@ -112,9 +117,35 @@ Available scenarios:
     )
 
     parser.add_argument(
+        "--keep-data",
+        action="store_true",
+        help="Preserve session database files after evaluation (default: clean up)",
+    )
+
+    parser.add_argument(
         "--list-scenarios",
         action="store_true",
         help="List available scenarios and exit",
+    )
+
+    # OpenAI-compatible chat endpoint (overrides Ollama for chat)
+    parser.add_argument(
+        "--chat-base-url",
+        type=str,
+        default=None,
+        help="Base URL for OpenAI-compatible chat API (e.g. http://host:8040/v1)",
+    )
+    parser.add_argument(
+        "--chat-model",
+        type=str,
+        default=None,
+        help="Model name for OpenAI-compatible chat API",
+    )
+    parser.add_argument(
+        "--chat-api-key",
+        type=str,
+        default="",
+        help="API key for OpenAI-compatible chat API",
     )
 
     return parser.parse_args()
@@ -148,37 +179,56 @@ async def main() -> int:
         args.iterations = 1
         console.print("[yellow]Quick mode: Running 1 iteration of 10 turns[/yellow]\n")
 
-    # Create config
-    config = EvaluatorConfig(
-        turn_counts=turn_counts,
-        iterations_per_turn_count=args.iterations,
-        max_concurrent=args.max_concurrent,
-        scenario_name=args.scenario,
-        verbose=args.verbose,
-        output_dir=args.output,
-    )
+    # Build chat config if OpenAI-compatible endpoint specified
+    chat_config: ChatConfig | None = None
+    if args.chat_base_url and args.chat_model:
+        chat_config = ChatConfig(
+            base_url=args.chat_base_url,
+            model=args.chat_model,
+            api_key=args.chat_api_key,
+        )
+        console.print(
+            f"[bold]Chat backend:[/bold] {args.chat_base_url} "
+            f"(model: {args.chat_model})\n"
+        )
 
-    # Create evaluator
-    evaluator = Evaluator(config)
+    # Determine which scenarios to run
+    if args.scenario == "all":
+        scenario_names = list(SCENARIOS.keys())
+    else:
+        scenario_names = [args.scenario]
 
     try:
-        if args.quick:
-            # Quick test mode
-            result = await evaluator.run_quick_test(turn_count=turn_counts[0])
-            console.print("\n[green]Quick test completed![/green]")
-            return 0 if result.recall_hit_rate >= 0.8 else 1
-        else:
-            # Full evaluation
-            report = await evaluator.run_evaluation()
+        for scenario_name in scenario_names:
+            # Create config for this scenario
+            config = EvaluatorConfig(
+                turn_counts=turn_counts,
+                iterations_per_turn_count=args.iterations,
+                max_concurrent=args.max_concurrent,
+                scenario_name=scenario_name,
+                verbose=args.verbose,
+                output_dir=args.output,
+                keep_data=args.keep_data,
+                chat_config=chat_config,
+            )
 
-            # Save reports
-            json_path, md_path = save_reports(report, config.output_dir)
+            evaluator = Evaluator(config)
 
-            console.print(f"\n[bold]Reports saved:[/bold]")
-            console.print(f"  JSON: {json_path}")
-            console.print(f"  Markdown: {md_path}")
+            if args.quick:
+                result = await evaluator.run_quick_test(turn_count=turn_counts[0])
+                console.print(f"\n[green]Quick test completed for {scenario_name}![/green]")
+                if result.recall_hit_rate < 0.8:
+                    return 1
+            else:
+                report = await evaluator.run_evaluation()
 
-            return 0
+                json_path, md_path = save_reports(report, config.output_dir)
+
+                console.print(f"\n[bold]Reports saved for {scenario_name}:[/bold]")
+                console.print(f"  JSON: {json_path}")
+                console.print(f"  Markdown: {md_path}")
+
+        return 0
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Evaluation interrupted by user[/yellow]")

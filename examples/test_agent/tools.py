@@ -6,7 +6,7 @@ import ast
 import operator
 from typing import Any
 
-from examples.test_agent.llm import Message, OllamaClient
+from examples.test_agent.llm import ChatClient, Message
 
 # Tool definitions in OpenAI function calling format
 TOOL_DEFINITIONS = [
@@ -67,7 +67,7 @@ TOOL_DEFINITIONS = [
 class ToolExecutor:
     """Executes tools for the agent."""
 
-    def __init__(self, llm_client: OllamaClient) -> None:
+    def __init__(self, llm_client: ChatClient) -> None:
         self._llm_client = llm_client
         self._remembered_facts: list[str] = []
 

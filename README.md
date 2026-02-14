@@ -44,9 +44,14 @@ ACMS solves this by automatically tracking what matters and recalling it when re
 - **Automatic marker detection** — Identifies decisions, constraints, failures, and goals in conversation
 - **Token-budgeted recall** — Always fits in your context window
 - **Episode management** — Groups related turns, triggers reflection on close
-- **LLM reflection** — Extracts durable facts from episodes (optional)
+- **LLM reflection with consolidation** — Extracts durable facts and keeps them accurate as requirements evolve
+- **Fact supersession** — When facts change, old versions are superseded (not deleted), maintaining an audit trail
+- **Deduplication** — Embedding-based duplicate detection prevents redundant facts
+- **Contradiction detection** — Consolidation prompt identifies and resolves conflicting facts
+- **Observability** — Built-in reflection tracing for debugging and monitoring
 - **Pluggable storage** — SQLite for persistence, in-memory for testing
 - **Provider agnostic** — Works with OpenAI, Anthropic, Ollama, or any embedder
+- **Evaluation harness** — Automated testing across 6 scenarios with latency profiling
 
 ## Installation
 
@@ -113,7 +118,7 @@ acms = ACMS(
 
 Sessions persist across restarts. Resume anytime with the same `session_id`.
 
-### 3. With Reflection (L2 Facts)
+### 3. With Reflection and Consolidation
 
 ```python
 from acms import ACMSConfig
@@ -122,8 +127,9 @@ from acms.core.config import ReflectionConfig
 config = ACMSConfig(
     reflection=ReflectionConfig(
         enabled=True,
-        min_episode_turns=3,  # Reflect after 3+ turn episodes
+        min_episode_turns=3,
         max_facts_per_episode=5,
+        dedup_similarity_threshold=0.95,  # Prevent duplicate facts
     )
 )
 
@@ -136,10 +142,18 @@ acms = ACMS(
 )
 ```
 
-When episodes close, the reflector extracts durable facts like:
-- "User prefers PostgreSQL over MySQL"
-- "The /api/users endpoint must support pagination"
-- "JWT auth failed due to clock skew; switched to session tokens"
+When episodes close, ACMS reflects on the conversation and extracts durable facts. On subsequent episodes, **consolidation** kicks in — existing facts are sent alongside new turns, and the reflector returns actions (keep/update/add/remove) to keep facts accurate:
+
+```
+Episode 1 → Reflects → "Database is PostgreSQL", "API style is REST"
+Episode 2 → User says "switch to MySQL"
+         → Consolidates → UPDATE "Database is MySQL" (supersedes PostgreSQL fact)
+                        → KEEP "API style is REST"
+```
+
+The old "PostgreSQL" fact is preserved with a `superseded_by` pointer for audit trail, but only the current "MySQL" fact appears in recall results.
+
+**Short episode carry-forward**: If an episode has fewer turns than `min_episode_turns`, those turns are buffered and included in the next episode's reflection. No data is ever silently dropped.
 
 ## Memory Model
 
@@ -161,6 +175,27 @@ Extracted from episodes via LLM reflection. Captures:
 - **Constraints** — Limitations discovered
 - **Failures** — What didn't work (to avoid repeating)
 - **Goals** — User objectives
+
+### 4. Observability (Reflection Tracing)
+
+```python
+from acms import ACMS, ReflectionTrace
+
+def on_trace(trace: ReflectionTrace):
+    print(f"Reflection on episode {trace.episode_id} ({trace.mode})")
+    print(f"  Input: {trace.input_turn_count} turns")
+    if trace.prior_facts:
+        print(f"  Prior facts: {len(trace.prior_facts)}")
+    print(f"  Saved: {len(trace.saved_facts)} facts")
+    print(f"  Superseded: {len(trace.superseded_facts)} facts")
+    print(f"  Elapsed: {trace.elapsed_ms}ms")
+
+acms = ACMS(session_id="demo", storage=storage, embedder=embedder, reflector=reflector)
+acms.set_trace_callback(on_trace)
+await acms.initialize()
+```
+
+Traces capture the full reflection pipeline: input turns, prior facts, scoped facts, raw LLM output (actions or facts), saved facts, and superseded facts. Use `trace.to_dict()` for JSON serialization.
 
 ## Markers
 
@@ -262,7 +297,9 @@ class MyReflector(Reflector):
 
 ## Test Agent
 
-ACMS includes a test agent for interactive experimentation:
+ACMS includes a fully functional test agent powered by Ollama for interactive experimentation.
+
+### Setup
 
 ```bash
 # Install example dependencies
@@ -274,18 +311,73 @@ ollama serve
 # Pull required models
 ollama pull mistral:7b-instruct
 ollama pull nomic-embed-text
+```
 
-# Run the test agent
+### Run
+
+```bash
+# Start a new session
 python -m examples.test_agent.run --session my_test
+
+# Resume an existing session
+python -m examples.test_agent.run --session my_test
+
+# Debug mode (shows recall items and ACMS timings)
+python -m examples.test_agent.run --session my_test --debug
 ```
 
 Commands:
-- `/stats` — Show session statistics
+- `/stats` — Show session statistics (turns, episodes, facts)
 - `/recall <query>` — Test recall directly
-- `/episode` — Close current episode
+- `/episode` — Close current episode (triggers reflection)
 - `/debug` — Toggle debug mode
 - `/help` — Show all commands
 - `/quit` — Exit
+
+## Evaluation Harness
+
+ACMS ships with an automated evaluation framework for measuring memory accuracy and latency across multi-turn conversations.
+
+### Quick Test
+
+```bash
+# Sanity check — 1 iteration, 10 turns
+python -m examples.evaluation.run --quick
+```
+
+### Full Evaluation
+
+```bash
+# Default: 80 sessions across 8 turn counts (10-80), decision_tracking scenario
+python -m examples.evaluation.run
+
+# Test consolidation accuracy with the progressive_requirements scenario
+python -m examples.evaluation.run --scenario progressive_requirements --quick
+
+# Custom configuration
+python -m examples.evaluation.run \
+    --scenario progressive_requirements \
+    --turns 10,20,30,40 \
+    --iterations 5 \
+    --max-concurrent 3 \
+    --verbose
+
+# List all scenarios
+python -m examples.evaluation.run --list-scenarios
+```
+
+### Available Scenarios
+
+| Scenario | Tests |
+|----------|-------|
+| `decision_tracking` | Recall of architectural decisions over time |
+| `constraint_awareness` | Recall of constraints when relevant |
+| `failure_memory` | Avoiding repeated failures |
+| `multi_fact_tracking` | Independent recall of multiple facts |
+| `goal_tracking` | Persistence of goals and objectives |
+| `progressive_requirements` | Fact updates via consolidation — probes check updated facts, not originals |
+
+Reports are saved as JSON and Markdown in `./evaluation_output/`.
 
 ## Configuration
 
@@ -311,6 +403,8 @@ config = ACMSConfig(
         enabled=True,
         min_episode_turns=3,
         max_facts_per_episode=5,
+        consolidation_similarity_threshold=0.3,  # Scoping threshold for prior facts
+        dedup_similarity_threshold=0.95,          # Duplicate detection threshold
     ),
 )
 ```
@@ -386,9 +480,13 @@ mypy acms
 
 ## Roadmap
 
+- [x] Consolidating reflection — Facts update as requirements change
+- [x] Deduplication — Embedding-based duplicate prevention
+- [x] Contradiction detection — Resolve conflicting facts during consolidation
+- [x] Observability — Reflection tracing with full input/output visibility
+- [x] Evaluation harness — Automated accuracy and latency testing
 - [ ] L3 Themes — Cross-episode patterns and user profiles
 - [ ] Async reflection queue — Non-blocking fact extraction
-- [ ] Memory compaction — Merge redundant facts
 - [ ] Multi-agent support — Shared memory across agents
 - [ ] Cloud storage backends — Redis, PostgreSQL
 

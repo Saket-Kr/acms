@@ -319,6 +319,97 @@ class TestInMemoryBackendFacts:
         assert facts[0].content == "Fact 1"
 
 
+    @pytest.mark.asyncio
+    async def test_get_active_facts_excludes_superseded(
+        self, backend: InMemoryBackend
+    ) -> None:
+        """Test that get_active_facts_by_session excludes superseded facts."""
+        session_id = "session_1"
+
+        # Active fact
+        active_fact = Fact(
+            id="fact_active",
+            session_id=session_id,
+            episode_id="ep_1",
+            content="Active fact",
+            created_at=datetime.utcnow(),
+        )
+        await backend.save_fact(active_fact)
+
+        # Superseded fact
+        superseded_fact = Fact(
+            id="fact_old",
+            session_id=session_id,
+            episode_id="ep_1",
+            content="Old fact",
+            created_at=datetime.utcnow(),
+            superseded_by="fact_active",
+        )
+        await backend.save_fact(superseded_fact)
+
+        active_facts = await backend.get_active_facts_by_session(session_id)
+        assert len(active_facts) == 1
+        assert active_facts[0].id == "fact_active"
+
+    @pytest.mark.asyncio
+    async def test_get_all_facts_includes_superseded(
+        self, backend: InMemoryBackend
+    ) -> None:
+        """Test that get_facts_by_session still returns all facts."""
+        session_id = "session_1"
+
+        await backend.save_fact(
+            Fact(
+                id="fact_1",
+                session_id=session_id,
+                episode_id="ep_1",
+                content="Fact 1",
+                created_at=datetime.utcnow(),
+            )
+        )
+        await backend.save_fact(
+            Fact(
+                id="fact_2",
+                session_id=session_id,
+                episode_id="ep_1",
+                content="Fact 2",
+                created_at=datetime.utcnow(),
+                superseded_by="fact_1",
+            )
+        )
+
+        all_facts = await backend.get_facts_by_session(session_id)
+        assert len(all_facts) == 2
+
+    @pytest.mark.asyncio
+    async def test_update_fact(self, backend: InMemoryBackend) -> None:
+        """Test updating a fact (e.g., setting superseded_by)."""
+        session_id = "session_1"
+
+        fact = Fact(
+            id="fact_1",
+            session_id=session_id,
+            episode_id="ep_1",
+            content="Original fact",
+            created_at=datetime.utcnow(),
+        )
+        await backend.save_fact(fact)
+
+        # Update to mark as superseded
+        from dataclasses import replace
+
+        updated = replace(fact, superseded_by="fact_2")
+        await backend.update_fact(updated)
+
+        # Verify the update persisted
+        active = await backend.get_active_facts_by_session(session_id)
+        assert len(active) == 0
+
+        all_facts = await backend.get_facts_by_session(session_id)
+        assert len(all_facts) == 1
+        assert all_facts[0].superseded_by == "fact_2"
+
+
 class TestInMemoryBackendStats:
     """Tests for session statistics."""
 

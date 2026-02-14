@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-import json
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from acms.errors import ProviderError
-from acms.models import Fact, MarkerType
-from acms.utils import generate_fact_id
+from acms.models import Fact
+from acms.models.consolidation import ConsolidationAction
+from acms.providers.parsing import (
+    CONSOLIDATION_PROMPT,
+    REFLECTION_PROMPT,
+    format_prior_facts,
+    format_turns,
+    parse_consolidation_actions,
+    parse_reflection_facts,
+)
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
@@ -103,28 +109,6 @@ class OpenAIReflector:
     to extract semantic facts from episodes.
     """
 
-    REFLECTION_PROMPT = """Analyze this conversation episode and extract key facts.
-
-Focus on:
-- DECISIONS: Choices made (what was decided and why)
-- CONSTRAINTS: Limitations discovered (what cannot/should not be done)
-- FAILURES: What didn't work (to avoid repeating)
-- GOALS: Objectives established (what the user wants to achieve)
-
-Episode turns:
-{turns}
-
-Extract up to {max_facts} facts. For each fact:
-1. State it concisely (one sentence)
-2. Classify its type (decision/constraint/failure/goal)
-3. Rate your confidence (0-1)
-
-Respond in JSON format:
-{{"facts": [
-  {{"content": "...", "type": "decision|constraint|failure|goal", "confidence": 0.9}},
-  ...
-]}}"""
-
     def __init__(
         self,
         client: "AsyncOpenAI",
@@ -165,7 +149,7 @@ Respond in JSON format:
                 f"[{t.role.value}]: {t.content}" for t in turns
             )
 
-            prompt = self.REFLECTION_PROMPT.format(
+            prompt = REFLECTION_PROMPT.format(
                 turns=turns_text,
                 max_facts=self._max_facts,
             )
@@ -191,29 +175,39 @@ Respond in JSON format:
 
     def _parse_facts(self, content: str, episode: "Episode") -> list[Fact]:
         """Parse facts from LLM response."""
-        try:
-            data = json.loads(content)
-            facts_data = data.get("facts", [])
-        except json.JSONDecodeError:
+        return parse_reflection_facts(content, episode)
+
+    async def reflect_with_consolidation(
+        self,
+        episode: "Episode",
+        turns: list["Turn"],
+        prior_facts: list[Fact],
+    ) -> list[ConsolidationAction]:
+        """Consolidate prior facts with new episode content."""
+        if not turns:
             return []
 
-        facts = []
-        for item in facts_data:
-            fact_type = item.get("type", "decision")
-            # Normalize fact type to MarkerType values
-            if fact_type not in [m.value for m in MarkerType]:
-                fact_type = MarkerType.DECISION.value
-
-            facts.append(
-                Fact(
-                    id=generate_fact_id(),
-                    session_id=episode.session_id,
-                    episode_id=episode.id,
-                    content=item.get("content", ""),
-                    created_at=datetime.utcnow(),
-                    fact_type=fact_type,
-                    confidence=float(item.get("confidence", 0.8)),
-                )
+        try:
+            prompt = CONSOLIDATION_PROMPT.format(
+                prior_facts=format_prior_facts(prior_facts),
+                turns=format_turns(turns),
             )
 
-        return facts
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"},
+            )
+
+            content = response.choices[0].message.content or "{}"
+            return parse_consolidation_actions(content)
+
+        except Exception as e:
+            if "ProviderError" in type(e).__name__:
+                raise
+            raise ProviderError(
+                f"OpenAI consolidation failed: {e}",
+                provider="OpenAIReflector",
+                retryable=True,
+                cause=e,
+            ) from e

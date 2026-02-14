@@ -6,8 +6,10 @@ from examples.evaluation.evaluator import Evaluator, EvaluatorConfig
 from examples.evaluation.metrics import (
     EvaluationReport,
     IterationResult,
+    LatencySummary,
     ProbeResult,
     TurnCountGroupMetrics,
+    TurnLatency,
     TurnMetrics,
 )
 from examples.evaluation.scenarios import SCENARIOS, Scenario, ScenarioTurn
@@ -17,8 +19,10 @@ __all__ = [
     "EvaluatorConfig",
     "EvaluationReport",
     "IterationResult",
+    "LatencySummary",
     "ProbeResult",
     "TurnCountGroupMetrics",
+    "TurnLatency",
     "TurnMetrics",
     "SCENARIOS",
     "Scenario",

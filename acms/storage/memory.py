@@ -181,6 +181,19 @@ class InMemoryBackend(StorageBackend):
         facts = [f for f in self._facts.values() if f.episode_id == episode_id]
         return sorted(facts, key=lambda f: f.created_at)
 
+    async def get_active_facts_by_session(self, session_id: str) -> list[Fact]:
+        """Get non-superseded facts for a session."""
+        facts = [
+            f
+            for f in self._facts.values()
+            if f.session_id == session_id and f.superseded_by is None
+        ]
+        return sorted(facts, key=lambda f: f.created_at)
+
+    async def update_fact(self, fact: Fact) -> None:
+        """Update an existing fact in storage."""
+        self._facts[fact.id] = fact
+
     # Statistics
 
     async def get_session_stats(

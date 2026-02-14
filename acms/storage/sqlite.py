@@ -88,11 +88,14 @@ class SQLiteBackend(StorageBackend):
         confidence REAL NOT NULL DEFAULT 1.0,
         embedding_id TEXT,
         token_count INTEGER NOT NULL DEFAULT 0,
-        metadata TEXT NOT NULL DEFAULT '{}'
+        metadata TEXT NOT NULL DEFAULT '{}',
+        superseded_by TEXT,
+        supersedes TEXT NOT NULL DEFAULT '[]'
     );
 
     CREATE INDEX IF NOT EXISTS idx_facts_session ON facts(session_id);
     CREATE INDEX IF NOT EXISTS idx_facts_episode ON facts(episode_id);
+    CREATE INDEX IF NOT EXISTS idx_facts_active ON facts(session_id, superseded_by);
 
     CREATE TABLE IF NOT EXISTS embeddings (
         id TEXT PRIMARY KEY,
@@ -138,6 +141,31 @@ class SQLiteBackend(StorageBackend):
         # Create schema
         await self._connection.executescript(self.SCHEMA)
         await self._connection.commit()
+
+        # Migrate existing databases to add new columns
+        await self._migrate_facts_table()
+
+    async def _migrate_facts_table(self) -> None:
+        """Add supersession columns to facts table if missing.
+
+        Uses PRAGMA table_info to detect missing columns and
+        ALTER TABLE ADD COLUMN to add them non-destructively.
+        """
+        conn = self._ensure_connected()
+        async with conn.execute("PRAGMA table_info(facts)") as cursor:
+            rows = await cursor.fetchall()
+
+        existing_columns = {row["name"] for row in rows}
+
+        if "superseded_by" not in existing_columns:
+            await conn.execute("ALTER TABLE facts ADD COLUMN superseded_by TEXT")
+
+        if "supersedes" not in existing_columns:
+            await conn.execute(
+                "ALTER TABLE facts ADD COLUMN supersedes TEXT NOT NULL DEFAULT '[]'"
+            )
+
+        await conn.commit()
 
     async def close(self) -> None:
         """Close the database connection."""
@@ -451,8 +479,9 @@ class SQLiteBackend(StorageBackend):
             """
             INSERT OR REPLACE INTO facts
             (id, session_id, episode_id, content, created_at,
-             fact_type, confidence, embedding_id, token_count, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             fact_type, confidence, embedding_id, token_count, metadata,
+             superseded_by, supersedes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 fact.id,
@@ -465,6 +494,8 @@ class SQLiteBackend(StorageBackend):
                 fact.embedding_id,
                 fact.token_count,
                 json.dumps(fact.metadata),
+                fact.superseded_by,
+                json.dumps(fact.supersedes),
             ),
         )
         await conn.commit()
@@ -489,6 +520,24 @@ class SQLiteBackend(StorageBackend):
             rows = await cursor.fetchall()
             return [self._row_to_fact(row) for row in rows]
 
+    async def get_active_facts_by_session(self, session_id: str) -> list[Fact]:
+        """Get non-superseded facts for a session."""
+        conn = self._ensure_connected()
+        async with conn.execute(
+            """
+            SELECT * FROM facts
+            WHERE session_id = ? AND superseded_by IS NULL
+            ORDER BY created_at
+            """,
+            (session_id,),
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return [self._row_to_fact(row) for row in rows]
+
+    async def update_fact(self, fact: Fact) -> None:
+        """Update an existing fact in storage."""
+        await self.save_fact(fact)
+
     def _row_to_fact(self, row: Any) -> Fact:
         """Convert a database row to a Fact."""
         return Fact(
@@ -502,6 +551,8 @@ class SQLiteBackend(StorageBackend):
             embedding_id=row["embedding_id"],
             token_count=row["token_count"],
             metadata=json.loads(row["metadata"]),
+            superseded_by=row["superseded_by"],
+            supersedes=json.loads(row["supersedes"]),
         )
 
     # Statistics

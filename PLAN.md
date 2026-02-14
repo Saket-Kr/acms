@@ -877,6 +877,299 @@ all = ["acms[sqlite,chroma,openai,anthropic,tiktoken]"]
 
 ---
 
+## Evaluation Plan — Stress-Testing ACMS
+
+### Current Baseline
+
+The initial evaluation harness (`examples/evaluation/`) runs the `decision_tracking` scenario across 10–80 turn conversations. Results show **100% recall hit rate** with avg scores above 1.0 (marker-boosted).
+
+**Why the current tests pass easily:**
+
+1. All setup messages trigger ACMS marker auto-detection ("Decision:", "Constraint:", etc.) — marked turns get priority in recall regardless of age
+2. Keywords are highly distinctive (FastAPI, PostgreSQL, Redis, PyJWT) — minimal chance of embedding confusion
+3. Filler messages are semantically bland ("Can you elaborate?") — they don't compete with setup facts for vector similarity
+4. Token budget (2000 tokens) is generous relative to fact volume (2–5 facts)
+5. Only one scenario runs per evaluation
+
+To produce meaningful, publishable benchmarks we need to find the **failure boundaries** — the conditions under which ACMS recall degrades — and then demonstrate that ACMS handles them gracefully or identify where improvements are needed.
+
+---
+
+### Phase E1: Adversarial Scenarios (Hardened Recall)
+
+**Goal:** Create scenarios where recall is *genuinely difficult* and 100% hit rate is no longer guaranteed.
+
+#### E1.1 — Semantic Distractor Fillers
+
+Replace bland filler messages with topically relevant distractors that compete for embedding similarity.
+
+```
+Setup: "Decision: We'll use PostgreSQL for the database."
+Fillers (hard): "I've been reading about MySQL vs MariaDB performance benchmarks."
+              "The database migration strategy should account for schema changes."
+              "SQLite is great for testing but won't scale for production."
+Probe: "What database did we choose?"
+```
+
+Why this is hard: fillers about databases push PostgreSQL recall down in vector ranking. Tests whether markers actually rescue important turns.
+
+#### E1.2 — Overlapping / Ambiguous Facts
+
+Inject multiple facts in the same domain that could be confused.
+
+```
+Setup turn 1: "Use PostgreSQL for the users table."
+Setup turn 4: "Use Redis for the session cache."
+Setup turn 7: "Use MongoDB for the analytics pipeline."
+Probe: "What database do we use for analytics?"  → expected: MongoDB (not PostgreSQL)
+Probe: "What stores our sessions?"              → expected: Redis (not PostgreSQL)
+```
+
+Tests whether recall retrieves the *right* fact from the same domain, not just *any* database-related turn.
+
+#### E1.3 — Fact Correction / Overwriting
+
+Test whether later corrections supersede earlier decisions.
+
+```
+Setup turn 2: "Decision: We'll use Flask for the API framework."
+Setup turn 15: "Decision: Actually, we're switching from Flask to FastAPI for async support."
+Probe turn 30: "What API framework are we using?"
+  → expected: FastAPI (must surface turn 15, ideally both for context)
+  → failure: if only Flask is recalled
+```
+
+This tests whether ACMS recall pipeline handles temporal ordering — both turns will have markers, but the correction must be surfaced.
+
+#### E1.4 — Unmarked Facts (Pure Semantic Recall)
+
+Setup messages that do NOT trigger auto-detection, testing recall without marker boosts.
+
+```
+Setup: "The client specifically asked for a blue color scheme with rounded corners."
+       "We agreed to deploy on AWS us-east-1."
+       "The team prefers to use Tailwind CSS over Bootstrap."
+```
+
+None of these start with "Decision:", "Constraint:", etc. Without markers, ACMS must rely purely on semantic similarity. This isolates vector search quality from marker boosting.
+
+#### E1.5 — High Fact Density
+
+Inject 15–20 distinct facts across the first 20 turns. Probe each one individually later.
+
+```
+Facts: user name, project name, framework, database, deployment target,
+       auth method, CSS framework, test framework, CI/CD tool, monitoring,
+       team size, deadline, budget, primary language, API style, cache layer,
+       message queue, search engine, CDN provider, feature flags
+```
+
+Tests whether recall degrades when many facts compete for limited token budget (2000 tokens). With 20 facts, some must be excluded — measures which ones survive and whether the right one surfaces per probe.
+
+---
+
+### Phase E2: Parameter Sensitivity Analysis
+
+**Goal:** Find the degradation curves for key ACMS configuration knobs.
+
+#### E2.1 — Token Budget Sweep
+
+Run the same scenario with token_budget values: `500, 750, 1000, 1500, 2000, 3000, 4000`.
+
+Expected behavior: recall should degrade at lower budgets (especially with many facts). Produces a **budget → recall curve** that's directly useful for documentation.
+
+Implementation: Add `--token-budget` CLI flag, propagate to `AgentConfig.token_budget`.
+
+#### E2.2 — Episode Length Sensitivity
+
+Vary `max_turns_per_episode`: `4, 6, 8, 12, 16`.
+
+Shorter episodes = more episode boundaries = more reflection runs = more L2 facts, but current episode context is smaller. Longer episodes = fewer reflections but larger current episode buffer.
+
+Implementation: Add `--episode-length` CLI flag, propagate to `AgentConfig.max_turns_per_episode`.
+
+#### E2.3 — Current Episode Budget Percentage
+
+Vary `current_episode_budget_pct`: `0.2, 0.3, 0.4, 0.5, 0.6`.
+
+Lower values give more room for past facts/turns; higher values prioritize recent context. The optimal balance depends on fact density.
+
+Implementation: Requires exposing this knob through `AgentConfig` → `ACMSConfig.recall`.
+
+---
+
+### Phase E3: Scale and Endurance
+
+**Goal:** Test ACMS at scale beyond what any reasonable demo would show.
+
+#### E3.1 — Long Conversations
+
+Extend turn counts to `[50, 100, 150, 200, 300]` with facts injected early (turns 1–10) and probes spread throughout.
+
+Key question: Does recall degrade as conversation grows to 200+ turns and 25+ episodes?
+
+#### E3.2 — Many-Episode Cross-Boundary Recall
+
+With `max_turns_per_episode=4`, an 80-turn conversation generates ~20 episodes. Setup facts in episode 1, probe in episode 15+.
+
+Tests whether L2 facts (reflection output) carry forward reliably across many episode boundaries.
+
+#### E3.3 — Latency Under Load
+
+Measure how ACMS overhead grows as the session database accumulates:
+- At 10, 50, 100, 200 turns, what's the recall latency?
+- Does vector search slow as embedding count grows?
+- Does reflection time grow with episode count?
+
+Already partially measured by our TurnLatency instrumentation — need to add a **latency-vs-turn-count curve** to the report.
+
+---
+
+### Phase E4: Quality Metrics Enhancement
+
+**Goal:** Move beyond simple keyword hit rate to metrics that matter for a published benchmark.
+
+#### E4.1 — Precision Measurement
+
+Current metric: "Was the expected keyword found anywhere in recalled items?" (recall only, no precision).
+
+Add: "What fraction of recalled items are actually relevant to the probe?" High recall with low precision means ACMS is flooding the context window with irrelevant content.
+
+Implementation: For probe turns, classify each recalled item as relevant/irrelevant (keyword presence in the item). Report `precision = relevant_recalled / total_recalled`.
+
+#### E4.2 — Rank-Aware Scoring (nDCG)
+
+Not just "was it recalled?" but "was it recalled near the top?"
+
+For each probe, compute nDCG@5 where relevance grades are:
+- 2 = contains expected keyword + high score
+- 1 = contains expected keyword
+- 0 = irrelevant
+
+This penalizes a system that recalls the right fact but buries it at position 8 behind 7 irrelevant items.
+
+#### E4.3 — LLM-as-Judge (Response Quality)
+
+The current harness only checks what ACMS recalls, not what the agent says. A complete evaluation checks the agent's actual response.
+
+For each probe, run a separate LLM call:
+```
+Given:
+  Question: "What database did we choose?"
+  Agent response: "We chose PostgreSQL for the database."
+  Expected keywords: ["PostgreSQL"]
+
+Score the response: Does it correctly answer the question using the expected information?
+Rating: 1 (correct), 0.5 (partial), 0 (wrong/missing)
+```
+
+This catches cases where ACMS recalls the right content but the agent hallucinates or ignores it.
+
+#### E4.4 — Composite Cross-Scenario Score
+
+Run all 5 scenarios (+ new ones) and produce a single weighted composite score:
+
+| Scenario | Weight | Rationale |
+|----------|--------|-----------|
+| Decision tracking | 1.0 | Core use case |
+| Constraint awareness | 1.2 | Constraints are safety-critical |
+| Failure memory | 1.0 | Prevents waste |
+| Multi-fact tracking | 1.5 | Real conversations have many facts |
+| Goal tracking | 0.8 | Goals are less precise |
+| Unmarked facts | 1.5 | Tests semantic recall without crutch |
+| Fact correction | 1.3 | Tests temporal reasoning |
+| High density | 1.5 | Tests budget allocation |
+
+Implementation: Add `--all-scenarios` flag that runs every scenario and produces a unified report.
+
+---
+
+### Phase E5: New Targeted Scenarios
+
+#### E5.1 — Contradiction Resolution
+
+```
+Turn 3: "Decision: Use JWT tokens for auth."
+Turn 25: "Decision: We're switching to session cookies — JWT was too complex."
+Probe turn 40: "What auth method are we using?"
+  → Expected: session cookies (the later decision)
+```
+
+#### E5.2 — Cascading Decisions
+
+```
+Turn 2: "Decision: We're building a Python backend."
+Turn 5: "Decision: Since we chose Python, we'll use SQLAlchemy as the ORM."
+Turn 8: "Decision: SQLAlchemy needs us to define models — using the declarative base pattern."
+Probe: "What ORM pattern are we using?"
+  → Expected: declarative base
+  → Bonus: Does ACMS also surface the chain (Python → SQLAlchemy → declarative base)?
+```
+
+#### E5.3 — Temporal Degradation Curve
+
+Same single fact, same probe repeated at turns 10, 20, 30, 50, 75, 100, 150, 200. Produces a **recall score vs. turn distance** curve showing how memory fades (or doesn't) over time.
+
+#### E5.4 — Budget Pressure
+
+20 marked facts, token_budget=1000. More important content than budget can hold. Tests whether ACMS's scoring algorithm surfaces the *most relevant* facts for each probe rather than just the highest-marker-boosted ones.
+
+#### E5.5 — Noise Injection
+
+50% of filler messages are rephrased versions of setup facts with slightly different details:
+```
+Setup: "Decision: Use PostgreSQL."
+Filler: "I've heard that MySQL is a good database choice for many teams."
+Filler: "PostgreSQL is popular but some teams prefer MongoDB."
+```
+
+Tests whether near-duplicate noise degrades precision by pulling in confusable content.
+
+---
+
+### Implementation Priority
+
+| Phase | Difficulty | Value | Priority |
+|-------|-----------|-------|----------|
+| E1.1 Semantic distractors | Low | High | **P0** |
+| E1.4 Unmarked facts | Low | High | **P0** |
+| E1.5 High fact density | Medium | High | **P0** |
+| E4.1 Precision metric | Low | High | **P0** |
+| E2.1 Token budget sweep | Low | High | **P1** |
+| E1.2 Overlapping facts | Medium | High | **P1** |
+| E1.3 Fact correction | Medium | High | **P1** |
+| E4.4 Composite scoring | Medium | High | **P1** |
+| E3.1 Long conversations | Low | Medium | **P1** |
+| E4.2 nDCG scoring | Medium | Medium | **P2** |
+| E5.3 Temporal curve | Low | Medium | **P2** |
+| E2.2 Episode length sweep | Low | Medium | **P2** |
+| E5.4 Budget pressure | Medium | Medium | **P2** |
+| E4.3 LLM-as-judge | High | High | **P3** |
+| E5.1 Contradiction | Medium | Medium | **P3** |
+| E5.2 Cascading decisions | Medium | Medium | **P3** |
+| E5.5 Noise injection | Medium | Medium | **P3** |
+
+P0 items are achievable with minimal framework changes (new scenarios + one new metric). P1 adds config knobs and cross-scenario orchestration. P2/P3 require deeper framework extensions.
+
+---
+
+### Report Deliverables (for OSS README / Blog)
+
+Once the above phases are implemented, the evaluation should produce:
+
+1. **Decision Persistence Curve** — Recall hit rate vs. conversation length (10–200 turns)
+2. **Token Budget Sensitivity** — Recall vs. budget (500–4000 tokens)
+3. **ACMS Overhead Profile** — Milliseconds per turn breakdown (ingest, recall, reflection)
+4. **Precision-Recall Tradeoff** — Hit rate vs. precision across scenarios
+5. **Scenario Difficulty Spectrum** — Composite score across easy → hard scenarios
+6. **Temporal Degradation** — Score vs. turn distance from fact injection
+7. **Comparison Table** — Marked vs. unmarked fact recall to quantify marker value
+
+These charts and tables form the evidence section of the ACMS README and any blog/paper about the project.
+
+---
+
 ## Changelog
 
+- **v0.2** (2025-02-10): Added evaluation stress-testing plan (Phases E1–E5)
 - **v0.1** (2024-XX-XX): Initial plan

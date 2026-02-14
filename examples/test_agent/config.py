@@ -27,6 +27,15 @@ class OllamaConfig:
 
 
 @dataclass
+class ChatConfig:
+    """OpenAI-compatible chat API configuration."""
+
+    base_url: str
+    model: str
+    api_key: str = ""
+
+
+@dataclass
 class AgentConfig:
     """Test agent configuration."""
 
@@ -41,8 +50,11 @@ class AgentConfig:
     # Debug settings
     debug: bool = field(default_factory=lambda: os.getenv("ACMS_DEBUG", "0") == "1")
 
-    # Ollama settings
+    # Ollama settings (used for embeddings, and for chat when chat_config is None)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)
+
+    # Optional OpenAI-compatible chat endpoint (overrides Ollama for chat)
+    chat_config: ChatConfig | None = None
 
     def __post_init__(self) -> None:
         """Ensure data directory exists."""

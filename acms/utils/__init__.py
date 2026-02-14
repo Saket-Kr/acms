@@ -32,6 +32,7 @@ from acms.utils.validation import (
     validate_session_id,
     validate_token_budget,
 )
+from acms.utils.vectors import cosine_similarity
 
 __all__ = [
     # IDs
@@ -66,4 +67,6 @@ __all__ = [
     "calculate_marker_boost",
     "is_custom_marker",
     "get_marker_type",
+    # Vectors
+    "cosine_similarity",
 ]
