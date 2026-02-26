@@ -17,9 +17,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from acms import ACMS, ACMSConfig
-from acms.core.config import EpisodeBoundaryConfig, RecallConfig, ReflectionConfig
-from acms.storage import get_sqlite_backend
+from gleanr import Gleanr, GleanrConfig
+from gleanr.core.config import EpisodeBoundaryConfig, RecallConfig, ReflectionConfig
+from gleanr.storage import get_sqlite_backend
 
 
 TURNS: list[tuple[str, str]] = [
@@ -91,7 +91,7 @@ async def main() -> None:
     from examples.test_agent.config import OllamaConfig
     from examples.test_agent.llm import OllamaClient, OllamaEmbedder, OllamaReflector
 
-    tmpdir = tempfile.mkdtemp(prefix="acms_diag_")
+    tmpdir = tempfile.mkdtemp(prefix="gleanr_diag_")
     db_path = Path(tmpdir) / "diag.db"
 
     client = OllamaClient(OllamaConfig())
@@ -118,7 +118,7 @@ async def main() -> None:
     SQLiteBackend = get_sqlite_backend()
     storage = SQLiteBackend(db_path)
 
-    config = ACMSConfig(
+    config = GleanrConfig(
         auto_detect_markers=True,
         episode_boundary=EpisodeBoundaryConfig(
             max_turns=3,
@@ -135,14 +135,14 @@ async def main() -> None:
         ),
     )
 
-    acms = ACMS(
+    gleanr = Gleanr(
         session_id="diag",
         storage=storage,
         embedder=embedder,
         reflector=reflector,
         config=config,
     )
-    await acms.initialize()
+    await gleanr.initialize()
 
     print("=" * 60)
     print("  DIAGNOSTIC: Tracing every LLM reflection call")
@@ -150,9 +150,9 @@ async def main() -> None:
 
     for i, (role, content) in enumerate(TURNS, 1):
         print(f"\n  INGEST [{i:2d}] {role}: {content[:60]}...")
-        await acms.ingest(role, content)
+        await gleanr.ingest(role, content)
 
-    await acms.close_episode()
+    await gleanr.close_episode()
 
     print("\n" + "=" * 60)
     print("  FINAL STATE")
@@ -169,7 +169,7 @@ async def main() -> None:
     for f in superseded:
         print(f"    - ({f.fact_type}) {f.content}  → {f.superseded_by[:20]}")
 
-    await acms.close()
+    await gleanr.close()
     await client.close()
 
 

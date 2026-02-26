@@ -1,4 +1,4 @@
-"""Smoke test: 10 progressive messages, inspect what ACMS stores.
+"""Smoke test: 10 progressive messages, inspect what Gleanr stores.
 
 Simulates the image-generation use case: a user builds and revises
 requirements over 10 turns spanning multiple episodes. At the end
@@ -22,13 +22,13 @@ from pathlib import Path
 # Lazy imports so the script can report a clear error if Ollama is down.
 # ---------------------------------------------------------------------------
 
-from acms import ACMS, ACMSConfig
-from acms.core.config import (
+from gleanr import Gleanr, GleanrConfig
+from gleanr.core.config import (
     EpisodeBoundaryConfig,
     RecallConfig,
     ReflectionConfig,
 )
-from acms.storage import get_sqlite_backend
+from gleanr.storage import get_sqlite_backend
 
 
 # ---------------------------------------------------------------------------
@@ -107,7 +107,7 @@ async def main(session_id: str) -> None:
         print("Make sure you're running from the repo root.")
         sys.exit(1)
 
-    tmpdir = tempfile.mkdtemp(prefix="acms_smoke_")
+    tmpdir = tempfile.mkdtemp(prefix="gleanr_smoke_")
     db_path = Path(tmpdir) / f"{session_id}.db"
 
     ollama_config = OllamaConfig()
@@ -134,7 +134,7 @@ async def main(session_id: str) -> None:
     SQLiteBackend = get_sqlite_backend()
     storage = SQLiteBackend(db_path)
 
-    config = ACMSConfig(
+    config = GleanrConfig(
         auto_detect_markers=True,
         episode_boundary=EpisodeBoundaryConfig(
             max_turns=3,             # 3 turns per episode → ~3 episodes + tail
@@ -151,16 +151,16 @@ async def main(session_id: str) -> None:
         ),
     )
 
-    acms = ACMS(
+    gleanr = Gleanr(
         session_id=session_id,
         storage=storage,
         embedder=embedder,
         reflector=reflector,
         config=config,
     )
-    await acms.initialize()
+    await gleanr.initialize()
 
-    _separator("ACMS Smoke Test — Consolidating Reflection")
+    _separator("Gleanr Smoke Test — Consolidating Reflection")
     print(f"Session:  {session_id}")
     print(f"DB:       {db_path}")
     print(f"Episodes: max_turns=3 (auto boundary)")
@@ -169,10 +169,10 @@ async def main(session_id: str) -> None:
     # --- Ingest 10 turns -------------------------------------------------
     for i, (role, content) in enumerate(TURNS, 1):
         print(f"\n  [{i:2d}] {role:>9s}: {content[:70]}{'...' if len(content) > 70 else ''}")
-        await acms.ingest(role, content)
+        await gleanr.ingest(role, content)
 
     # Close the final episode so reflection runs on the last batch.
-    await acms.close_episode()
+    await gleanr.close_episode()
 
     # --- Inspect storage -------------------------------------------------
     _separator("ALL FACTS (including superseded)")
@@ -211,7 +211,7 @@ async def main(session_id: str) -> None:
     # --- Recall test -----------------------------------------------------
     _separator("RECALL (simulating 'what is the current image prompt?')")
 
-    items = await acms.recall(query="current image prompt requirements")
+    items = await gleanr.recall(query="current image prompt requirements")
     total_tokens = sum(item.token_count for item in items)
     print(f"  Budget used:    {total_tokens} tokens")
     print(f"  Items returned: {len(items)}")
@@ -221,7 +221,7 @@ async def main(session_id: str) -> None:
         print(f"    [{label:>8s}]  {preview}{'...' if len(item.content) > 80 else ''}")
 
     # --- Cleanup ---------------------------------------------------------
-    await acms.close()
+    await gleanr.close()
     await client.close()
 
     _separator("DONE")
@@ -230,7 +230,7 @@ async def main(session_id: str) -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="ACMS consolidation smoke test")
+    parser = argparse.ArgumentParser(description="Gleanr consolidation smoke test")
     parser.add_argument("--session", default="smoke_test", help="Session ID")
     args = parser.parse_args()
 

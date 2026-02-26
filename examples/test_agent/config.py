@@ -41,14 +41,14 @@ class AgentConfig:
 
     # Session settings
     session_id: str = "default"
-    data_dir: Path = field(default_factory=lambda: Path.home() / ".acms_test_agent")
+    data_dir: Path = field(default_factory=lambda: Path.home() / ".gleanr_test_agent")
 
-    # ACMS settings
+    # Gleanr settings
     token_budget: int = 2000
     max_turns_per_episode: int = 8
 
     # Debug settings
-    debug: bool = field(default_factory=lambda: os.getenv("ACMS_DEBUG", "0") == "1")
+    debug: bool = field(default_factory=lambda: os.getenv("Gleanr_DEBUG", "0") == "1")
 
     # Ollama settings (used for embeddings, and for chat when chat_config is None)
     ollama: OllamaConfig = field(default_factory=OllamaConfig)

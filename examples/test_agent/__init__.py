@@ -1,1 +1,1 @@
-"""ACMS Test Agent - A conversational agent for testing ACMS."""
+"""Gleanr Test Agent - A conversational agent for testing Gleanr."""

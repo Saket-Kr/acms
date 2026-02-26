@@ -1,1 +1,1 @@
-"""Unit tests for ACMS."""
+"""Unit tests for Gleanr."""

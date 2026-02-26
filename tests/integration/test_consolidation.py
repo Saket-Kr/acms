@@ -15,13 +15,13 @@ from typing import Any
 
 import pytest
 
-from acms import ACMS, ACMSConfig
-from acms.core.config import ReflectionConfig
-from acms.models import Fact, MarkerType
-from acms.models.consolidation import ConsolidationAction, ConsolidationActionType
-from acms.providers.base import NullEmbedder
-from acms.storage.memory import InMemoryBackend
-from acms.utils import generate_fact_id
+from gleanr import Gleanr, GleanrConfig
+from gleanr.core.config import ReflectionConfig
+from gleanr.models import Fact, MarkerType
+from gleanr.models.consolidation import ConsolidationAction, ConsolidationActionType
+from gleanr.providers.base import NullEmbedder
+from gleanr.storage.memory import InMemoryBackend
+from gleanr.utils import generate_fact_id
 
 
 # ---------------------------------------------------------------------------
@@ -126,21 +126,21 @@ class TestFullConsolidationCycle:
             consolidation_actions=actions_ep2,
         )
 
-        config = ACMSConfig(reflection=_reflection_config())
+        config = GleanrConfig(reflection=_reflection_config())
 
-        acms = ACMS(
+        gleanr = Gleanr(
             session_id="test",
             storage=storage,
             embedder=NullEmbedder(dimension=4),
             reflector=reflector,
             config=config,
         )
-        await acms.initialize()
+        await gleanr.initialize()
 
         # --- Episode 1: setup ---
-        await acms.ingest("user", "Let's set up Module A")
-        await acms.ingest("assistant", "I'll use PostgreSQL for the database")
-        await acms.close_episode()
+        await gleanr.ingest("user", "Let's set up Module A")
+        await gleanr.ingest("assistant", "I'll use PostgreSQL for the database")
+        await gleanr.close_episode()
 
         # Verify episode 1 facts
         assert reflector.reflect_count == 1
@@ -149,9 +149,9 @@ class TestFullConsolidationCycle:
         assert all_facts[0].id == "fact_ep1_db"
 
         # --- Episode 2: consolidation ---
-        await acms.ingest("user", "Switch Module A to MySQL and add auth")
-        await acms.ingest("assistant", "Updated database and added auth requirement")
-        await acms.close_episode()
+        await gleanr.ingest("user", "Switch Module A to MySQL and add auth")
+        await gleanr.ingest("assistant", "Updated database and added auth requirement")
+        await gleanr.close_episode()
 
         # Verify consolidation
         assert reflector.consolidation_count == 1
@@ -171,7 +171,7 @@ class TestFullConsolidationCycle:
         old_fact = next(f for f in all_facts if f.id == "fact_ep1_db")
         assert old_fact.superseded_by is not None
 
-        await acms.close()
+        await gleanr.close()
 
     @pytest.mark.asyncio
     async def test_remove_in_consolidation(self) -> None:
@@ -208,26 +208,26 @@ class TestFullConsolidationCycle:
             consolidation_actions=actions_ep2,
         )
 
-        config = ACMSConfig(reflection=_reflection_config())
+        config = GleanrConfig(reflection=_reflection_config())
 
-        acms = ACMS(
+        gleanr = Gleanr(
             session_id="test",
             storage=storage,
             embedder=NullEmbedder(dimension=4),
             reflector=reflector,
             config=config,
         )
-        await acms.initialize()
+        await gleanr.initialize()
 
         # Episode 1
-        await acms.ingest("user", "Use dark mode")
-        await acms.ingest("assistant", "OK, dark mode it is")
-        await acms.close_episode()
+        await gleanr.ingest("user", "Use dark mode")
+        await gleanr.ingest("assistant", "OK, dark mode it is")
+        await gleanr.close_episode()
 
         # Episode 2
-        await acms.ingest("user", "Actually, switch to light mode")
-        await acms.ingest("assistant", "Switched to light mode")
-        await acms.close_episode()
+        await gleanr.ingest("user", "Actually, switch to light mode")
+        await gleanr.ingest("assistant", "Switched to light mode")
+        await gleanr.close_episode()
 
         active = await storage.get_active_facts_by_session("test")
         assert len(active) == 1
@@ -241,7 +241,7 @@ class TestFullConsolidationCycle:
         assert removed.superseded_by is not None
         assert removed.superseded_by.startswith("removed_by_")
 
-        await acms.close()
+        await gleanr.close()
 
     @pytest.mark.asyncio
     async def test_keep_action_preserves_facts(self) -> None:
@@ -270,24 +270,24 @@ class TestFullConsolidationCycle:
             consolidation_actions=actions_ep2,
         )
 
-        config = ACMSConfig(reflection=_reflection_config())
+        config = GleanrConfig(reflection=_reflection_config())
 
-        acms = ACMS(
+        gleanr = Gleanr(
             session_id="test",
             storage=storage,
             embedder=NullEmbedder(dimension=4),
             reflector=reflector,
             config=config,
         )
-        await acms.initialize()
+        await gleanr.initialize()
 
-        await acms.ingest("user", "Set up REST API")
-        await acms.ingest("assistant", "REST API configured")
-        await acms.close_episode()
+        await gleanr.ingest("user", "Set up REST API")
+        await gleanr.ingest("assistant", "REST API configured")
+        await gleanr.close_episode()
 
-        await acms.ingest("user", "Any other questions?")
-        await acms.ingest("assistant", "No changes needed")
-        await acms.close_episode()
+        await gleanr.ingest("user", "Any other questions?")
+        await gleanr.ingest("assistant", "No changes needed")
+        await gleanr.close_episode()
 
         # Fact stays active, no supersession
         active = await storage.get_active_facts_by_session("test")
@@ -295,7 +295,7 @@ class TestFullConsolidationCycle:
         assert active[0].id == "fact_keep"
         assert active[0].superseded_by is None
 
-        await acms.close()
+        await gleanr.close()
 
 
 class TestLegacyReflectorCompatibility:
@@ -325,26 +325,26 @@ class TestLegacyReflectorCompatibility:
 
         reflector = StubLegacyReflector(facts_per_call=[[fact1], [fact2]])
 
-        config = ACMSConfig(reflection=_reflection_config())
+        config = GleanrConfig(reflection=_reflection_config())
 
-        acms = ACMS(
+        gleanr = Gleanr(
             session_id="test",
             storage=storage,
             embedder=NullEmbedder(dimension=4),
             reflector=reflector,
             config=config,
         )
-        await acms.initialize()
+        await gleanr.initialize()
 
         # Episode 1
-        await acms.ingest("user", "First message")
-        await acms.ingest("assistant", "First response")
-        await acms.close_episode()
+        await gleanr.ingest("user", "First message")
+        await gleanr.ingest("assistant", "First response")
+        await gleanr.close_episode()
 
         # Episode 2
-        await acms.ingest("user", "Second message")
-        await acms.ingest("assistant", "Second response")
-        await acms.close_episode()
+        await gleanr.ingest("user", "Second message")
+        await gleanr.ingest("assistant", "Second response")
+        await gleanr.close_episode()
 
         # Both facts exist, both active (no supersession)
         all_facts = await storage.get_facts_by_session("test")
@@ -353,4 +353,4 @@ class TestLegacyReflectorCompatibility:
         active = await storage.get_active_facts_by_session("test")
         assert len(active) == 2
 
-        await acms.close()
+        await gleanr.close()

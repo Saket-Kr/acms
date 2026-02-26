@@ -7,13 +7,13 @@ from typing import Any
 
 import pytest
 
-from acms.core.config import ACMSConfig, ReflectionConfig
-from acms.memory.reflection import ReflectionRunner
-from acms.models import Episode, EpisodeStatus, Fact, MarkerType, Role, Turn
-from acms.models.consolidation import ConsolidationAction, ConsolidationActionType
-from acms.providers.base import NullEmbedder
-from acms.storage.memory import InMemoryBackend
-from acms.utils import HeuristicTokenCounter, generate_episode_id, generate_fact_id
+from gleanr.core.config import GleanrConfig, ReflectionConfig
+from gleanr.memory.reflection import ReflectionRunner
+from gleanr.models import Episode, EpisodeStatus, Fact, MarkerType, Role, Turn
+from gleanr.models.consolidation import ConsolidationAction, ConsolidationActionType
+from gleanr.providers.base import NullEmbedder
+from gleanr.storage.memory import InMemoryBackend
+from gleanr.utils import HeuristicTokenCounter, generate_episode_id, generate_fact_id
 
 
 # ---------------------------------------------------------------------------
@@ -122,12 +122,12 @@ def _make_fact(
 async def _build_runner(
     reflector: Any,
     storage: InMemoryBackend | None = None,
-    config: ACMSConfig | None = None,
+    config: GleanrConfig | None = None,
     session_id: str = "test_session",
 ) -> tuple[ReflectionRunner, InMemoryBackend]:
     storage = storage or InMemoryBackend()
     await storage.initialize()
-    config = config or ACMSConfig()
+    config = config or GleanrConfig()
     runner = ReflectionRunner(
         session_id=session_id,
         storage=storage,
@@ -202,7 +202,7 @@ class TestLegacyReflection:
     async def test_max_facts_cap(self) -> None:
         facts = [_make_fact(content=f"Fact {i}") for i in range(10)]
         reflector = FakeReflector(facts_to_return=facts)
-        config = ACMSConfig(
+        config = GleanrConfig(
             reflection=ReflectionConfig(max_facts_per_episode=3)
         )
         runner, _ = await _build_runner(reflector, config=config)
@@ -216,7 +216,7 @@ class TestLegacyReflection:
     @pytest.mark.asyncio
     async def test_disabled_reflection(self) -> None:
         reflector = FakeReflector(facts_to_return=[_make_fact()])
-        config = ACMSConfig(reflection=ReflectionConfig(enabled=False))
+        config = GleanrConfig(reflection=ReflectionConfig(enabled=False))
         runner, _ = await _build_runner(reflector, config=config)
 
         result = await runner.reflect_episode(_make_episode(), _make_turns())
@@ -227,7 +227,7 @@ class TestLegacyReflection:
     async def test_min_turns_carries_forward(self) -> None:
         """Turns below min_episode_turns are carried forward, not discarded."""
         reflector = FakeReflector(facts_to_return=[_make_fact()])
-        config = ACMSConfig(reflection=ReflectionConfig(min_episode_turns=5))
+        config = GleanrConfig(reflection=ReflectionConfig(min_episode_turns=5))
         runner, _ = await _build_runner(reflector, config=config)
 
         # Only 3 turns, below min — carried forward, not reflected
@@ -562,7 +562,7 @@ class TestCarryForward:
         """Turns from a 1-turn episode are carried into the next reflection."""
         fact = _make_fact(content="Combined fact")
         reflector = FakeReflector(facts_to_return=[fact])
-        config = ACMSConfig(reflection=ReflectionConfig(min_episode_turns=3))
+        config = GleanrConfig(reflection=ReflectionConfig(min_episode_turns=3))
         runner, storage = await _build_runner(reflector, config=config)
 
         # Episode 1: only 1 turn — too short, gets carried
@@ -589,7 +589,7 @@ class TestCarryForward:
         """Multiple short episodes accumulate until threshold is met."""
         fact = _make_fact(content="Accumulated fact")
         reflector = FakeReflector(facts_to_return=[fact])
-        config = ACMSConfig(reflection=ReflectionConfig(min_episode_turns=4))
+        config = GleanrConfig(reflection=ReflectionConfig(min_episode_turns=4))
         runner, _ = await _build_runner(reflector, config=config)
 
         # Three 1-turn episodes: carried = 3, still below 4
@@ -615,7 +615,7 @@ class TestCarryForward:
         """flush_carried_turns forces reflection on buffered turns."""
         fact = _make_fact(content="Flushed fact")
         reflector = FakeReflector(facts_to_return=[fact])
-        config = ACMSConfig(reflection=ReflectionConfig(min_episode_turns=5))
+        config = GleanrConfig(reflection=ReflectionConfig(min_episode_turns=5))
         runner, storage = await _build_runner(reflector, config=config)
 
         # Episode with 2 turns — below threshold, gets carried
@@ -646,7 +646,7 @@ class TestCarryForward:
         """After successful reflection, carried turns are cleared."""
         fact = _make_fact(content="Test")
         reflector = FakeReflector(facts_to_return=[fact])
-        config = ACMSConfig(reflection=ReflectionConfig(min_episode_turns=2))
+        config = GleanrConfig(reflection=ReflectionConfig(min_episode_turns=2))
         runner, _ = await _build_runner(reflector, config=config)
 
         # 1 turn → carried
@@ -671,7 +671,7 @@ class TestReflectionTracing:
     @pytest.mark.asyncio
     async def test_legacy_trace_emitted(self) -> None:
         """Trace is emitted for legacy reflection with correct fields."""
-        from acms.memory.reflection import ReflectionTrace
+        from gleanr.memory.reflection import ReflectionTrace
 
         fact = _make_fact(content="Database is PostgreSQL")
         reflector = FakeReflector(facts_to_return=[fact])
@@ -702,7 +702,7 @@ class TestReflectionTracing:
     @pytest.mark.asyncio
     async def test_consolidation_trace_emitted(self) -> None:
         """Trace is emitted for consolidation with prior facts and actions."""
-        from acms.memory.reflection import ReflectionTrace
+        from gleanr.memory.reflection import ReflectionTrace
 
         prior_fact = _make_fact(
             fact_id="fact_prior",
@@ -779,7 +779,7 @@ class TestReflectionTracing:
     @pytest.mark.asyncio
     async def test_trace_to_dict(self) -> None:
         """ReflectionTrace.to_dict() produces a serializable dict."""
-        from acms.memory.reflection import ReflectionTrace
+        from gleanr.memory.reflection import ReflectionTrace
 
         fact = _make_fact(content="Test fact")
         reflector = FakeReflector(facts_to_return=[fact])
@@ -799,7 +799,7 @@ class TestReflectionTracing:
     @pytest.mark.asyncio
     async def test_disable_trace_callback(self) -> None:
         """Setting callback to None disables tracing."""
-        from acms.memory.reflection import ReflectionTrace
+        from gleanr.memory.reflection import ReflectionTrace
 
         fact = _make_fact(content="Test")
         reflector = FakeReflector(facts_to_return=[fact])
@@ -870,7 +870,7 @@ class TestDeduplication:
         await storage.initialize()
 
         embedder = DeterministicEmbedder(dimension=4)
-        config = ACMSConfig(reflection=ReflectionConfig(dedup_similarity_threshold=0.95))
+        config = GleanrConfig(reflection=ReflectionConfig(dedup_similarity_threshold=0.95))
 
         runner = ReflectionRunner(
             session_id="test_session",
@@ -920,7 +920,7 @@ class TestDeduplication:
         await storage.initialize()
 
         embedder = DeterministicEmbedder(dimension=4)
-        config = ACMSConfig(reflection=ReflectionConfig(dedup_similarity_threshold=0.95))
+        config = GleanrConfig(reflection=ReflectionConfig(dedup_similarity_threshold=0.95))
 
         runner = ReflectionRunner(
             session_id="test_session",
@@ -971,7 +971,7 @@ class TestDeduplication:
 
         embedder = DeterministicEmbedder(dimension=4)
         # Threshold of 1.0 disables dedup
-        config = ACMSConfig(reflection=ReflectionConfig(dedup_similarity_threshold=1.0))
+        config = GleanrConfig(reflection=ReflectionConfig(dedup_similarity_threshold=1.0))
 
         runner = ReflectionRunner(
             session_id="test_session",
@@ -1015,7 +1015,7 @@ class TestDeduplication:
             ),
         ]
         reflector = FakeConsolidatingReflector(actions_to_return=actions)
-        config = ACMSConfig(reflection=ReflectionConfig(dedup_similarity_threshold=0.95))
+        config = GleanrConfig(reflection=ReflectionConfig(dedup_similarity_threshold=0.95))
         runner, storage = await _build_runner(reflector, config=config)
 
         # NullEmbedder produces zero vectors — dedup should not block

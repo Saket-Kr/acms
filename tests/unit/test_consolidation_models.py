@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from acms.models.consolidation import ConsolidationAction, ConsolidationActionType
+from gleanr.models.consolidation import ConsolidationAction, ConsolidationActionType
 
 
 class TestConsolidationActionType:

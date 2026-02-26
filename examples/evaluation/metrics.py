@@ -1,4 +1,4 @@
-"""Metric types and calculation for ACMS evaluation."""
+"""Metric types and calculation for Gleanr evaluation."""
 
 from __future__ import annotations
 
@@ -56,17 +56,17 @@ class ProbeResult:
 
 @dataclass
 class TurnLatency:
-    """ACMS latency breakdown for a single turn.
+    """Gleanr latency breakdown for a single turn.
 
     All values are in milliseconds. Measured at the agent level by wrapping
-    individual ACMS calls with ``time.perf_counter()``.
+    individual Gleanr calls with ``time.perf_counter()``.
     """
 
     ingest_user_ms: int
     recall_ms: int
     ingest_assistant_ms: int
     ingest_facts_ms: int
-    total_acms_ms: int
+    total_gleanr_ms: int
     llm_ms: int
     had_reflection: bool
 
@@ -77,7 +77,7 @@ class TurnLatency:
             "recall_ms": self.recall_ms,
             "ingest_assistant_ms": self.ingest_assistant_ms,
             "ingest_facts_ms": self.ingest_facts_ms,
-            "total_acms_ms": self.total_acms_ms,
+            "total_gleanr_ms": self.total_gleanr_ms,
             "llm_ms": self.llm_ms,
             "had_reflection": self.had_reflection,
         }
@@ -92,32 +92,32 @@ class LatencySummary:
     significantly slower) from normal turns.
     """
 
-    avg_total_acms_ms: float
+    avg_total_gleanr_ms: float
     avg_ingest_user_ms: float
     avg_recall_ms: float
     avg_ingest_assistant_ms: float
     avg_ingest_facts_ms: float
     avg_llm_ms: float
-    p50_total_acms_ms: float
-    p95_total_acms_ms: float
-    max_total_acms_ms: int
+    p50_total_gleanr_ms: float
+    p95_total_gleanr_ms: float
+    max_total_gleanr_ms: int
     reflection_turn_count: int
-    avg_acms_ms_excluding_reflection: float
+    avg_gleanr_ms_excluding_reflection: float
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         return {
-            "avg_total_acms_ms": round(self.avg_total_acms_ms, 1),
+            "avg_total_gleanr_ms": round(self.avg_total_gleanr_ms, 1),
             "avg_ingest_user_ms": round(self.avg_ingest_user_ms, 1),
             "avg_recall_ms": round(self.avg_recall_ms, 1),
             "avg_ingest_assistant_ms": round(self.avg_ingest_assistant_ms, 1),
             "avg_ingest_facts_ms": round(self.avg_ingest_facts_ms, 1),
             "avg_llm_ms": round(self.avg_llm_ms, 1),
-            "p50_total_acms_ms": round(self.p50_total_acms_ms, 1),
-            "p95_total_acms_ms": round(self.p95_total_acms_ms, 1),
-            "max_total_acms_ms": self.max_total_acms_ms,
+            "p50_total_gleanr_ms": round(self.p50_total_gleanr_ms, 1),
+            "p95_total_gleanr_ms": round(self.p95_total_gleanr_ms, 1),
+            "max_total_gleanr_ms": self.max_total_gleanr_ms,
             "reflection_turn_count": self.reflection_turn_count,
-            "avg_acms_ms_excluding_reflection": round(self.avg_acms_ms_excluding_reflection, 1),
+            "avg_gleanr_ms_excluding_reflection": round(self.avg_gleanr_ms_excluding_reflection, 1),
         }
 
 
@@ -278,20 +278,20 @@ class TurnCountGroupMetrics:
         return max(i.avg_recall_score for i in self.iterations)
 
     @property
-    def avg_acms_overhead_ms(self) -> float:
-        """Average ACMS overhead per turn across all iterations."""
+    def avg_gleanr_overhead_ms(self) -> float:
+        """Average Gleanr overhead per turn across all iterations."""
         summaries = [i.latency_summary for i in self.iterations if i.latency_summary]
         if not summaries:
             return 0.0
-        return sum(s.avg_total_acms_ms for s in summaries) / len(summaries)
+        return sum(s.avg_total_gleanr_ms for s in summaries) / len(summaries)
 
     @property
-    def avg_acms_overhead_ms_excl_reflection(self) -> float:
-        """Average ACMS overhead excluding reflection turns."""
+    def avg_gleanr_overhead_ms_excl_reflection(self) -> float:
+        """Average Gleanr overhead excluding reflection turns."""
         summaries = [i.latency_summary for i in self.iterations if i.latency_summary]
         if not summaries:
             return 0.0
-        return sum(s.avg_acms_ms_excluding_reflection for s in summaries) / len(summaries)
+        return sum(s.avg_gleanr_ms_excluding_reflection for s in summaries) / len(summaries)
 
     @property
     def avg_staleness_rate(self) -> float:
@@ -320,8 +320,8 @@ class TurnCountGroupMetrics:
             "std_score": round(self.std_score, 4),
             "min_score": round(self.min_score, 4),
             "max_score": round(self.max_score, 4),
-            "avg_acms_overhead_ms": round(self.avg_acms_overhead_ms, 1),
-            "avg_acms_overhead_ms_excl_reflection": round(self.avg_acms_overhead_ms_excl_reflection, 1),
+            "avg_gleanr_overhead_ms": round(self.avg_gleanr_overhead_ms, 1),
+            "avg_gleanr_overhead_ms_excl_reflection": round(self.avg_gleanr_overhead_ms_excl_reflection, 1),
             "iterations": [i.to_dict() for i in self.iterations],
         }
         if any(i.consolidation_stats for i in self.iterations):
@@ -375,11 +375,11 @@ class EvaluationReport:
         return {g.turn_count: g.avg_recall_hit_rate for g in self.turn_count_groups}
 
     @property
-    def overall_avg_acms_overhead_ms(self) -> float:
-        """Overall average ACMS overhead per turn."""
+    def overall_avg_gleanr_overhead_ms(self) -> float:
+        """Overall average Gleanr overhead per turn."""
         if not self.turn_count_groups:
             return 0.0
-        values = [g.avg_acms_overhead_ms for g in self.turn_count_groups if g.avg_acms_overhead_ms > 0]
+        values = [g.avg_gleanr_overhead_ms for g in self.turn_count_groups if g.avg_gleanr_overhead_ms > 0]
         if not values:
             return 0.0
         return sum(values) / len(values)
@@ -417,7 +417,7 @@ class EvaluationReport:
             "decision_persistence_curve": {
                 str(k): round(v, 4) for k, v in self.decision_persistence_curve.items()
             },
-            "overall_avg_acms_overhead_ms": round(self.overall_avg_acms_overhead_ms, 1),
+            "overall_avg_gleanr_overhead_ms": round(self.overall_avg_gleanr_overhead_ms, 1),
         }
         has_consolidation = any(
             i.consolidation_stats
@@ -535,25 +535,25 @@ def calculate_latency_summary(turn_metrics: list[TurnMetrics]) -> LatencySummary
         return None
 
     n = len(latencies)
-    sorted_acms = sorted(lat.total_acms_ms for lat in latencies)
+    sorted_gleanr = sorted(lat.total_gleanr_ms for lat in latencies)
 
     non_reflection = [lat for lat in latencies if not lat.had_reflection]
     avg_excl_reflection = (
-        sum(lat.total_acms_ms for lat in non_reflection) / len(non_reflection)
+        sum(lat.total_gleanr_ms for lat in non_reflection) / len(non_reflection)
         if non_reflection
         else 0.0
     )
 
     return LatencySummary(
-        avg_total_acms_ms=sum(lat.total_acms_ms for lat in latencies) / n,
+        avg_total_gleanr_ms=sum(lat.total_gleanr_ms for lat in latencies) / n,
         avg_ingest_user_ms=sum(lat.ingest_user_ms for lat in latencies) / n,
         avg_recall_ms=sum(lat.recall_ms for lat in latencies) / n,
         avg_ingest_assistant_ms=sum(lat.ingest_assistant_ms for lat in latencies) / n,
         avg_ingest_facts_ms=sum(lat.ingest_facts_ms for lat in latencies) / n,
         avg_llm_ms=sum(lat.llm_ms for lat in latencies) / n,
-        p50_total_acms_ms=_percentile(sorted_acms, 0.50),
-        p95_total_acms_ms=_percentile(sorted_acms, 0.95),
-        max_total_acms_ms=sorted_acms[-1],
+        p50_total_gleanr_ms=_percentile(sorted_gleanr, 0.50),
+        p95_total_gleanr_ms=_percentile(sorted_gleanr, 0.95),
+        max_total_gleanr_ms=sorted_gleanr[-1],
         reflection_turn_count=sum(1 for lat in latencies if lat.had_reflection),
-        avg_acms_ms_excluding_reflection=avg_excl_reflection,
+        avg_gleanr_ms_excluding_reflection=avg_excl_reflection,
     )

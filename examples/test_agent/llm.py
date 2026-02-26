@@ -350,7 +350,7 @@ class OpenAIChatClient:
 
 
 class OllamaEmbedder:
-    """ACMS-compatible embedder using Ollama."""
+    """Gleanr-compatible embedder using Ollama."""
 
     def __init__(self, client: OllamaClient) -> None:
         self._client = client
@@ -366,7 +366,7 @@ class OllamaEmbedder:
 
 
 class OllamaReflector:
-    """ACMS-compatible reflector using an LLM for fact extraction."""
+    """Gleanr-compatible reflector using an LLM for fact extraction."""
 
     def __init__(self, client: ChatClient, max_facts: int = 5) -> None:
         self._client = client
@@ -378,8 +378,8 @@ class OllamaReflector:
         """Extract semantic facts from an episode."""
         from datetime import datetime
 
-        from acms.models import Fact, MarkerType
-        from acms.utils import generate_fact_id
+        from gleanr.models import Fact, MarkerType
+        from gleanr.utils import generate_fact_id
 
         if not turns:
             return []
@@ -387,7 +387,7 @@ class OllamaReflector:
         # Format turns for the prompt
         turns_text = "\n".join(f"[{t.role.value}]: {t.content}" for t in turns)
 
-        from acms.providers.parsing import REFLECTION_PROMPT
+        from gleanr.providers.parsing import REFLECTION_PROMPT
 
         prompt = REFLECTION_PROMPT.format(
             turns=turns_text,
@@ -402,7 +402,7 @@ class OllamaReflector:
 
     def _parse_facts(self, content: str, episode: Any) -> list[Any]:
         """Parse facts from LLM response."""
-        from acms.providers.parsing import parse_reflection_facts
+        from gleanr.providers.parsing import parse_reflection_facts
 
         return parse_reflection_facts(content, episode)
 
@@ -413,8 +413,8 @@ class OllamaReflector:
         prior_facts: list[Any],
     ) -> list[Any]:
         """Consolidate prior facts with new episode content."""
-        from acms.models.consolidation import ConsolidationAction
-        from acms.providers.parsing import (
+        from gleanr.models.consolidation import ConsolidationAction
+        from gleanr.providers.parsing import (
             CONSOLIDATION_PROMPT,
             format_prior_facts,
             format_turns,

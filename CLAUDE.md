@@ -4,18 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ACMS (Agent Context Management System) is a session-scoped memory layer for AI agents. It provides structured, persistent context management that is distinct from knowledge retrieval (RAG/search).
+Gleanr (Agent Context Management System) is a session-scoped memory layer for AI agents. It provides structured, persistent context management that is distinct from knowledge retrieval (RAG/search).
 
-**Core principle:** Agent memory is not knowledge retrieval. ACMS handles internal agent state (experience-driven, persistent, continuity-focused), not external knowledge queries.
+**Core principle:** Agent memory is not knowledge retrieval. Gleanr handles internal agent state (experience-driven, persistent, continuity-focused), not external knowledge queries.
 
 ## Architecture
 
 ### Three Planes Model
-1. **Memory Plane (ACMS)** - Internal, session-scoped, always-on per turn
+1. **Memory Plane (Gleanr)** - Internal, session-scoped, always-on per turn
 2. **Knowledge Plane (Tools)** - RAG, web search, APIs (external, stateless)
 3. **Reasoning Plane (LLM)** - Consumes context from both planes
 
-ACMS operates **before tool invocation** and **after agent output**.
+Gleanr operates **before tool invocation** and **after agent output**.
 
 ### Memory Levels
 - **L0 (Raw Turns)** - Verbatim messages, short-lived with aggressive TTL

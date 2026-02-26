@@ -157,15 +157,15 @@ cython_debug/
 ehthumbs.db
 Thumbs.db
 
-# ACMS specific
+# Gleanr specific
 *.db
 *.sqlite
 *.sqlite3
 data/
-.acms/
+.gleanr/
 
 # Test artifacts
 .test_data/
 test_*.db
 .claude/settings.local.json
-acms/py.typed
+gleanr/py.typed

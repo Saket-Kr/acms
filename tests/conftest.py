@@ -1,4 +1,4 @@
-"""Shared test fixtures for ACMS."""
+"""Shared test fixtures for Gleanr."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from typing import Any, AsyncGenerator
 
 import pytest
 
-from acms import ACMS, ACMSConfig, InMemoryBackend, NullEmbedder
-from acms.models import Episode, EpisodeStatus, Fact, MarkerType, Role, Turn
-from acms.utils import (
+from gleanr import Gleanr, GleanrConfig, InMemoryBackend, NullEmbedder
+from gleanr.models import Episode, EpisodeStatus, Fact, MarkerType, Role, Turn
+from gleanr.utils import (
     HeuristicTokenCounter,
     generate_episode_id,
     generate_fact_id,
@@ -36,9 +36,9 @@ def storage() -> InMemoryBackend:
 
 
 @pytest.fixture
-def config() -> ACMSConfig:
-    """Create default ACMS configuration."""
-    return ACMSConfig()
+def config() -> GleanrConfig:
+    """Create default Gleanr configuration."""
+    return GleanrConfig()
 
 
 @pytest.fixture
@@ -50,21 +50,21 @@ async def initialized_storage(storage: InMemoryBackend) -> AsyncGenerator[InMemo
 
 
 @pytest.fixture
-async def acms_instance(
+async def gleanr_instance(
     storage: InMemoryBackend,
     null_embedder: NullEmbedder,
-    config: ACMSConfig,
-) -> AsyncGenerator[ACMS, None]:
-    """Create an initialized ACMS instance for testing."""
-    acms = ACMS(
+    config: GleanrConfig,
+) -> AsyncGenerator[Gleanr, None]:
+    """Create an initialized Gleanr instance for testing."""
+    gleanr = Gleanr(
         session_id="test_session",
         storage=storage,
         embedder=null_embedder,
         config=config,
     )
-    await acms.initialize()
-    yield acms
-    await acms.close()
+    await gleanr.initialize()
+    yield gleanr
+    await gleanr.close()
 
 
 @pytest.fixture

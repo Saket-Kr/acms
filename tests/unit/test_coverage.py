@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from acms.memory.coverage import extract_keywords, validate_coverage
-from acms.models import Fact, MarkerType
-from acms.models.consolidation import ConsolidationAction, ConsolidationActionType
+from gleanr.memory.coverage import extract_keywords, validate_coverage
+from gleanr.models import Fact, MarkerType
+from gleanr.models.consolidation import ConsolidationAction, ConsolidationActionType
 
 
 def _make_fact(

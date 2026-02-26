@@ -96,7 +96,7 @@ async def main(config: AgentConfig) -> None:
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="ACMS Test Agent - A conversational agent for testing ACMS",
+        description="Gleanr Test Agent - A conversational agent for testing Gleanr",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -108,7 +108,7 @@ Environment variables:
   OLLAMA_HOST         Ollama API host (default: http://localhost:11434)
   OLLAMA_CHAT_MODEL   Chat model (default: mistral:7b-instruct)
   OLLAMA_EMBED_MODEL  Embedding model (default: nomic-embed-text)
-  ACMS_DEBUG          Enable debug mode (1 = enabled)
+  Gleanr_DEBUG          Enable debug mode (1 = enabled)
 """,
     )
 

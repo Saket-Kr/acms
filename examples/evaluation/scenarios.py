@@ -1,4 +1,4 @@
-"""Test scenario definitions for ACMS evaluation."""
+"""Test scenario definitions for Gleanr evaluation."""
 
 from __future__ import annotations
 

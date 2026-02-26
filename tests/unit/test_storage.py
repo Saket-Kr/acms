@@ -4,9 +4,9 @@ from datetime import datetime
 
 import pytest
 
-from acms.models import Episode, EpisodeStatus, Fact, MarkerType, Role, Turn
-from acms.storage import InMemoryBackend
-from acms.utils import generate_episode_id, generate_fact_id, generate_turn_id
+from gleanr.models import Episode, EpisodeStatus, Fact, MarkerType, Role, Turn
+from gleanr.storage import InMemoryBackend
+from gleanr.utils import generate_episode_id, generate_fact_id, generate_turn_id
 
 
 @pytest.fixture

@@ -1,30 +1,30 @@
-# ACMS — Agent Context Management System
+# Gleanr — Agent Context Management System
 
 **Session-scoped memory for AI agents that actually remembers.**
 
-ACMS is a Python SDK that gives your AI agents persistent, structured memory across conversations. Unlike RAG systems that retrieve external knowledge, ACMS manages the agent's *internal state*—what it decided, what constraints it discovered, what failed, and what the user prefers.
+Gleanr is a Python SDK that gives your AI agents persistent, structured memory across conversations. Unlike RAG systems that retrieve external knowledge, Gleanr manages the agent's *internal state*—what it decided, what constraints it discovered, what failed, and what the user prefers.
 
 ```python
-from acms import ACMS
+from gleanr import Gleanr
 
 # Initialize with your session
-acms = ACMS(session_id="user_123", storage=storage, embedder=embedder)
-await acms.initialize()
+gleanr = Gleanr(session_id="user_123", storage=storage, embedder=embedder)
+await gleanr.initialize()
 
 # Ingest conversation turns
-await acms.ingest("user", "Let's use PostgreSQL for the database")
-await acms.ingest("assistant", "Decision: We'll use PostgreSQL for its robust JSON support")
+await gleanr.ingest("user", "Let's use PostgreSQL for the database")
+await gleanr.ingest("assistant", "Decision: We'll use PostgreSQL for its robust JSON support")
 
 # Recall relevant context (token-budgeted)
-context = await acms.recall("What database are we using?", token_budget=2000)
+context = await gleanr.recall("What database are we using?", token_budget=2000)
 # Returns: [ContextItem(content="Decision: We'll use PostgreSQL...", markers=["decision"], ...)]
 ```
 
-## Why ACMS?
+## Why Gleanr?
 
 Current LLM applications treat agent memory as a search problem. But **agent memory is not knowledge retrieval**:
 
-| Aspect | Knowledge Retrieval (RAG) | Agent Memory (ACMS) |
+| Aspect | Knowledge Retrieval (RAG) | Agent Memory (Gleanr) |
 |--------|--------------------------|---------------------|
 | Scope | External corpus | Internal session state |
 | Lifespan | Persistent | Session-bound with decay |
@@ -37,7 +37,7 @@ After 30-40 turns, agents without proper memory:
 - Lose track of user preferences
 - Contradict themselves
 
-ACMS solves this by automatically tracking what matters and recalling it when relevant.
+Gleanr solves this by automatically tracking what matters and recalling it when relevant.
 
 ## Key Features
 
@@ -57,8 +57,8 @@ ACMS solves this by automatically tracking what matters and recalling it when re
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/acms.git
-cd acms
+git clone https://github.com/Saket-Kr/gleanr.git
+cd gleanr
 
 # Install with your preferred extras
 pip install -e ".[sqlite]"           # SQLite storage backend
@@ -74,29 +74,29 @@ pip install -e ".[dev]"              # Development tools
 
 ```python
 import asyncio
-from acms import ACMS, ACMSConfig
-from acms.storage import InMemoryBackend
+from gleanr import Gleanr, GleanrConfig
+from gleanr.storage import InMemoryBackend
 
 async def main():
     # Setup
     storage = InMemoryBackend()
 
-    acms = ACMS(
+    gleanr = Gleanr(
         session_id="demo",
         storage=storage,
         embedder=your_embedder,  # See Providers section
     )
-    await acms.initialize()
+    await gleanr.initialize()
 
     # Conversation
-    await acms.ingest("user", "I need help building a REST API")
-    await acms.ingest("assistant", "I'll help you build a REST API. Decision: We'll use FastAPI for its automatic OpenAPI docs.")
+    await gleanr.ingest("user", "I need help building a REST API")
+    await gleanr.ingest("assistant", "I'll help you build a REST API. Decision: We'll use FastAPI for its automatic OpenAPI docs.")
 
     # Later in conversation...
-    context = await acms.recall("What framework are we using?")
+    context = await gleanr.recall("What framework are we using?")
     print(context[0].content)  # "Decision: We'll use FastAPI..."
 
-    await acms.close()
+    await gleanr.close()
 
 asyncio.run(main())
 ```
@@ -104,12 +104,12 @@ asyncio.run(main())
 ### 2. With SQLite Persistence
 
 ```python
-from acms.storage import get_sqlite_backend
+from gleanr.storage import get_sqlite_backend
 
 SQLiteBackend = get_sqlite_backend()
 storage = SQLiteBackend("./agent_memory.db")
 
-acms = ACMS(
+gleanr = Gleanr(
     session_id="user_123",
     storage=storage,
     embedder=embedder,
@@ -121,10 +121,10 @@ Sessions persist across restarts. Resume anytime with the same `session_id`.
 ### 3. With Reflection and Consolidation
 
 ```python
-from acms import ACMSConfig
-from acms.core.config import ReflectionConfig
+from gleanr import GleanrConfig
+from gleanr.core.config import ReflectionConfig
 
-config = ACMSConfig(
+config = GleanrConfig(
     reflection=ReflectionConfig(
         enabled=True,
         min_episode_turns=3,
@@ -133,7 +133,7 @@ config = ACMSConfig(
     )
 )
 
-acms = ACMS(
+gleanr = Gleanr(
     session_id="demo",
     storage=storage,
     embedder=embedder,
@@ -142,7 +142,7 @@ acms = ACMS(
 )
 ```
 
-When episodes close, ACMS reflects on the conversation and extracts durable facts. On subsequent episodes, **consolidation** kicks in — existing facts are sent alongside new turns, and the reflector returns actions (keep/update/add/remove) to keep facts accurate:
+When episodes close, Gleanr reflects on the conversation and extracts durable facts. On subsequent episodes, **consolidation** kicks in — existing facts are sent alongside new turns, and the reflector returns actions (keep/update/add/remove) to keep facts accurate:
 
 ```
 Episode 1 → Reflects → "Database is PostgreSQL", "API style is REST"
@@ -157,7 +157,7 @@ The old "PostgreSQL" fact is preserved with a `superseded_by` pointer for audit 
 
 ## Memory Model
 
-ACMS uses a three-level memory hierarchy:
+Gleanr uses a three-level memory hierarchy:
 
 ### L0: Raw Turns
 Every message in the conversation. Short-lived, used for immediate context.
@@ -179,7 +179,7 @@ Extracted from episodes via LLM reflection. Captures:
 ### 4. Observability (Reflection Tracing)
 
 ```python
-from acms import ACMS, ReflectionTrace
+from gleanr import Gleanr, ReflectionTrace
 
 def on_trace(trace: ReflectionTrace):
     print(f"Reflection on episode {trace.episode_id} ({trace.mode})")
@@ -190,24 +190,24 @@ def on_trace(trace: ReflectionTrace):
     print(f"  Superseded: {len(trace.superseded_facts)} facts")
     print(f"  Elapsed: {trace.elapsed_ms}ms")
 
-acms = ACMS(session_id="demo", storage=storage, embedder=embedder, reflector=reflector)
-acms.set_trace_callback(on_trace)
-await acms.initialize()
+gleanr = Gleanr(session_id="demo", storage=storage, embedder=embedder, reflector=reflector)
+gleanr.set_trace_callback(on_trace)
+await gleanr.initialize()
 ```
 
 Traces capture the full reflection pipeline: input turns, prior facts, scoped facts, raw LLM output (actions or facts), saved facts, and superseded facts. Use `trace.to_dict()` for JSON serialization.
 
 ## Markers
 
-ACMS uses markers to signal importance. They're auto-detected or manually specified:
+Gleanr uses markers to signal importance. They're auto-detected or manually specified:
 
 ```python
 # Auto-detected from content
-await acms.ingest("assistant", "Decision: We'll use React for the frontend")
+await gleanr.ingest("assistant", "Decision: We'll use React for the frontend")
 # Marker "decision" auto-detected
 
 # Manually specified
-await acms.ingest("user", "Important: Never use eval() in this codebase", markers=["constraint"])
+await gleanr.ingest("user", "Important: Never use eval() in this codebase", markers=["constraint"])
 ```
 
 Built-in marker types:
@@ -224,7 +224,7 @@ Marked content gets priority in recall and influences fact extraction.
 Recall is automatic and token-budgeted:
 
 ```python
-context = await acms.recall(
+context = await gleanr.recall(
     query="authentication",
     token_budget=2000,  # Max tokens to return
 )
@@ -246,13 +246,13 @@ Recall prioritizes:
 
 **OpenAI:**
 ```python
-from acms.providers.openai import OpenAIEmbedder
+from gleanr.providers.openai import OpenAIEmbedder
 embedder = OpenAIEmbedder(api_key="sk-...")
 ```
 
 **Anthropic:**
 ```python
-from acms.providers.anthropic import AnthropicEmbedder
+from gleanr.providers.anthropic import AnthropicEmbedder
 embedder = AnthropicEmbedder(api_key="sk-ant-...")
 ```
 
@@ -264,7 +264,7 @@ embedder = OllamaEmbedder(client)
 
 **Custom:**
 ```python
-from acms.providers import Embedder
+from gleanr.providers import Embedder
 
 class MyEmbedder(Embedder):
     async def embed(self, texts: list[str]) -> list[list[float]]:
@@ -281,13 +281,13 @@ class MyEmbedder(Embedder):
 Reflection requires an LLM to extract facts:
 
 ```python
-from acms.providers.openai import OpenAIReflector
+from gleanr.providers.openai import OpenAIReflector
 reflector = OpenAIReflector(api_key="sk-...")
 ```
 
 Or implement your own:
 ```python
-from acms.providers import Reflector
+from gleanr.providers import Reflector
 
 class MyReflector(Reflector):
     async def reflect(self, episode, turns) -> list[Fact]:
@@ -297,7 +297,7 @@ class MyReflector(Reflector):
 
 ## Test Agent
 
-ACMS includes a fully functional test agent powered by Ollama for interactive experimentation.
+Gleanr includes a fully functional test agent powered by Ollama for interactive experimentation.
 
 ### Setup
 
@@ -322,7 +322,7 @@ python -m examples.test_agent.run --session my_test
 # Resume an existing session
 python -m examples.test_agent.run --session my_test
 
-# Debug mode (shows recall items and ACMS timings)
+# Debug mode (shows recall items and Gleanr timings)
 python -m examples.test_agent.run --session my_test --debug
 ```
 
@@ -336,7 +336,7 @@ Commands:
 
 ## Evaluation Harness
 
-ACMS ships with an automated evaluation framework for measuring memory accuracy and latency across multi-turn conversations.
+Gleanr ships with an automated evaluation framework for measuring memory accuracy and latency across multi-turn conversations.
 
 ### Quick Test
 
@@ -382,10 +382,10 @@ Reports are saved as JSON and Markdown in `./evaluation_output/`.
 ## Configuration
 
 ```python
-from acms import ACMSConfig
-from acms.core.config import EpisodeBoundaryConfig, RecallConfig, ReflectionConfig
+from gleanr import GleanrConfig
+from gleanr.core.config import EpisodeBoundaryConfig, RecallConfig, ReflectionConfig
 
-config = ACMSConfig(
+config = GleanrConfig(
     auto_detect_markers=True,  # Auto-detect decision/constraint/etc.
 
     episode_boundary=EpisodeBoundaryConfig(
@@ -411,10 +411,10 @@ config = ACMSConfig(
 
 ## API Reference
 
-### ACMS Class
+### Gleanr Class
 
 ```python
-class ACMS:
+class Gleanr:
     async def initialize() -> None
     async def ingest(role: str, content: str, markers: list[str] = None) -> Turn
     async def recall(query: str, token_budget: int = None) -> list[ContextItem]
@@ -450,7 +450,7 @@ class ContextItem:
 
 ## Design Philosophy
 
-ACMS follows these principles:
+Gleanr follows these principles:
 
 1. **Store conclusions, not evidence** — Don't store raw RAG results or chain-of-thought. Store what was decided and why.
 
@@ -472,10 +472,10 @@ pip install -e ".[dev]"
 pytest
 
 # Run with coverage
-pytest --cov=acms
+pytest --cov=gleanr
 
 # Type checking
-mypy acms
+mypy gleanr
 ```
 
 ## Roadmap
@@ -500,4 +500,4 @@ Contributions welcome! Please read the design docs in `PLAN.md` to understand th
 
 ---
 
-**ACMS** — Because agents should remember what matters.
+**Gleanr** — Because agents should remember what matters.

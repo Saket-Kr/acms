@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from acms.models import Episode, EpisodeStatus, Fact, Role, Turn
-from acms.models.consolidation import ConsolidationActionType
-from acms.providers.parsing import (
+from gleanr.models import Episode, EpisodeStatus, Fact, Role, Turn
+from gleanr.models.consolidation import ConsolidationActionType
+from gleanr.providers.parsing import (
     format_prior_facts,
     format_turns,
     parse_consolidation_actions,
     parse_reflection_facts,
 )
-from acms.utils import generate_episode_id
+from gleanr.utils import generate_episode_id
 
 
 def _make_episode() -> Episode:

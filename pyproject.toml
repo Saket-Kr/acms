@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "acms"
+name = "gleanr"
 version = "0.1.0"
-description = "Agent Context Management System - Session-scoped memory layer for AI agents"
+description = "Gleanr - Session-scoped memory layer for AI agents"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "ACMS Authors" }
+    { name = "Saket Kumar" }
 ]
 keywords = ["ai", "agents", "memory", "context", "llm"]
 classifiers = [
@@ -51,16 +51,16 @@ dev = [
     "httpx>=0.25.0",
 ]
 all = [
-    "acms[sqlite,chroma,postgres,openai,anthropic,tiktoken,http]",
+    "gleanr[sqlite,chroma,postgres,openai,anthropic,tiktoken,http]",
 ]
 
 [project.urls]
-Homepage = "https://github.com/acms/acms"
-Documentation = "https://github.com/acms/acms#readme"
-Repository = "https://github.com/acms/acms"
+Homepage = "https://github.com/Saket-Kr/gleanr"
+Documentation = "https://github.com/Saket-Kr/gleanr#readme"
+Repository = "https://github.com/Saket-Kr/gleanr"
 
 [tool.hatch.build.targets.wheel]
-packages = ["acms"]
+packages = ["gleanr"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -91,7 +91,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["acms"]
+known-first-party = ["gleanr"]
 
 [tool.mypy]
 python_version = "3.11"

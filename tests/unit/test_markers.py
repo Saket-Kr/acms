@@ -2,8 +2,8 @@
 
 import pytest
 
-from acms.models import MarkerType
-from acms.utils import (
+from gleanr.models import MarkerType
+from gleanr.utils import (
     calculate_marker_boost,
     detect_markers,
     get_marker_type,

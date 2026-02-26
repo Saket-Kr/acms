@@ -1,4 +1,4 @@
-"""Main test agent with ACMS integration."""
+"""Main test agent with Gleanr integration."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from acms import ACMS, ACMSConfig, MarkerType
-from acms.core.config import EpisodeBoundaryConfig, RecallConfig, ReflectionConfig
-from acms.storage import get_sqlite_backend
+from gleanr import Gleanr, GleanrConfig, MarkerType
+from gleanr.core.config import EpisodeBoundaryConfig, RecallConfig, ReflectionConfig
+from gleanr.storage import get_sqlite_backend
 
 from examples.test_agent.config import SYSTEM_PROMPT, AgentConfig
 from examples.test_agent.llm import (
@@ -21,7 +21,7 @@ from examples.test_agent.llm import (
 from examples.test_agent.tools import TOOL_DEFINITIONS, ToolExecutor
 
 if TYPE_CHECKING:
-    from acms.models import ContextItem
+    from gleanr.models import ContextItem
 
 
 @dataclass
@@ -49,13 +49,13 @@ class AgentResponse:
 
 
 class TestAgent:
-    """A conversational agent that uses ACMS for memory management."""
+    """A conversational agent that uses Gleanr for memory management."""
 
     def __init__(self, config: AgentConfig) -> None:
         self.config = config
         self._ollama: OllamaClient | None = None
         self._chat_client: OllamaClient | OpenAIChatClient | None = None
-        self._acms: ACMS | None = None
+        self._gleanr: Gleanr | None = None
         self._tool_executor: ToolExecutor | None = None
         self._initialized = False
 
@@ -71,15 +71,15 @@ class TestAgent:
         else:
             self._chat_client = self._ollama
 
-        # Create ACMS components
+        # Create Gleanr components
         SQLiteBackend = get_sqlite_backend()
         storage = SQLiteBackend(self.config.db_path)
 
         embedder = OllamaEmbedder(self._ollama)
         reflector = OllamaReflector(self._chat_client)
 
-        # Configure ACMS
-        acms_config = ACMSConfig(
+        # Configure Gleanr
+        gleanr_config = GleanrConfig(
             auto_detect_markers=True,
             episode_boundary=EpisodeBoundaryConfig(
                 max_turns=self.config.max_turns_per_episode,
@@ -97,15 +97,15 @@ class TestAgent:
             ),
         )
 
-        # Create ACMS
-        self._acms = ACMS(
+        # Create Gleanr
+        self._gleanr = Gleanr(
             session_id=self.config.session_id,
             storage=storage,
             embedder=embedder,
             reflector=reflector,
-            config=acms_config,
+            config=gleanr_config,
         )
-        await self._acms.initialize()
+        await self._gleanr.initialize()
 
         # Create tool executor
         self._tool_executor = ToolExecutor(self._chat_client)
@@ -114,8 +114,8 @@ class TestAgent:
 
     async def close(self) -> None:
         """Close the agent and release resources."""
-        if self._acms:
-            await self._acms.close()
+        if self._gleanr:
+            await self._gleanr.close()
         if self._chat_client and self._chat_client is not self._ollama:
             await self._chat_client.close()
         if self._ollama:
@@ -134,18 +134,18 @@ class TestAgent:
         if not self._initialized:
             raise RuntimeError("Agent not initialized. Call initialize() first.")
 
-        assert self._acms is not None
+        assert self._gleanr is not None
         assert self._chat_client is not None
         assert self._tool_executor is not None
 
         # 1. Ingest user message (timed)
         t0 = time.perf_counter()
-        await self._acms.ingest("user", user_message)
+        await self._gleanr.ingest("user", user_message)
         ingest_user_ms = int((time.perf_counter() - t0) * 1000)
 
         # 2. Recall relevant context (timed)
         t0 = time.perf_counter()
-        recalled = await self._acms.recall(
+        recalled = await self._gleanr.recall(
             user_message,
             token_budget=self.config.token_budget,
         )
@@ -154,7 +154,7 @@ class TestAgent:
         # 3. Build conversation messages
         messages = self._build_messages(user_message, recalled)
 
-        # 4. Call LLM (with tool loop) — not timed as ACMS overhead
+        # 4. Call LLM (with tool loop) — not timed as Gleanr overhead
         tool_calls_made: list[tuple[str, str]] = []
         response = await self._chat_client.chat(messages, tools=TOOL_DEFINITIONS)
 
@@ -198,13 +198,13 @@ class TestAgent:
         # 5. Ingest assistant response with marker detection (timed)
         t0 = time.perf_counter()
         markers = self._detect_explicit_markers(response.content)
-        await self._acms.ingest("assistant", response.content, markers=markers)
+        await self._gleanr.ingest("assistant", response.content, markers=markers)
         ingest_assistant_ms = int((time.perf_counter() - t0) * 1000)
 
         # 6. Handle any pending remember facts (timed)
         t0 = time.perf_counter()
         for fact in self._tool_executor.get_pending_facts():
-            await self._acms.ingest(
+            await self._gleanr.ingest(
                 "assistant",
                 f"[Remembered] {fact}",
                 markers=["custom:explicit_memory"],
@@ -270,10 +270,10 @@ class TestAgent:
 
     async def get_stats(self) -> dict[str, int | str | None]:
         """Get session statistics."""
-        if not self._acms:
+        if not self._gleanr:
             return {}
 
-        stats = await self._acms.get_session_stats()
+        stats = await self._gleanr.get_session_stats()
         return {
             "session_id": stats.session_id,
             "turns": stats.total_turns,
@@ -286,27 +286,27 @@ class TestAgent:
 
     async def close_episode(self, reason: str = "manual") -> str | None:
         """Manually close the current episode."""
-        if not self._acms:
+        if not self._gleanr:
             return None
-        return await self._acms.close_episode(reason)
+        return await self._gleanr.close_episode(reason)
 
     async def recall(self, query: str) -> list["ContextItem"]:
         """Directly test recall with a query."""
-        if not self._acms:
+        if not self._gleanr:
             return []
-        return await self._acms.recall(query, token_budget=self.config.token_budget)
+        return await self._gleanr.recall(query, token_budget=self.config.token_budget)
 
     async def get_consolidation_stats(self) -> dict[str, int | float] | None:
         """Get consolidation statistics (active vs superseded facts).
 
         Returns:
             Dict with active_facts_count, superseded_facts_count,
-            total_facts_count, consolidation_ratio. Or None if ACMS
+            total_facts_count, consolidation_ratio. Or None if Gleanr
             is not initialized.
         """
-        if not self._acms:
+        if not self._gleanr:
             return None
-        storage = self._acms._storage  # noqa: SLF001
+        storage = self._gleanr._storage  # noqa: SLF001
         session_id = self.config.session_id
         all_facts = await storage.get_facts_by_session(session_id)
         active_facts = await storage.get_active_facts_by_session(session_id)

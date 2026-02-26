@@ -1,1 +1,1 @@
-"""Integration tests for ACMS."""
+"""Integration tests for Gleanr."""

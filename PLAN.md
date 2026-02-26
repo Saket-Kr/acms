@@ -1,4 +1,4 @@
-# ACMS Implementation Plan
+# Gleanr Implementation Plan
 
 ## Overview
 
@@ -29,7 +29,7 @@ Build a production-grade Python SDK for session-scoped agent context management.
 | Error handling | Custom exception hierarchy | Typed errors, retryable vs fatal |
 | Logging | Structured logging | JSON-compatible, correlation IDs |
 | Embedding timing | Await during ingest | Correctness over latency; extensible for fire-and-forget later |
-| Session model | One ACMS instance = one session | Simpler, cleaner isolation |
+| Session model | One Gleanr instance = one session | Simpler, cleaner isolation |
 | Caching | Built-in LRU cache | In-memory cache in front of storage for hot data |
 
 **Core Principle:** Correctness > Latency. The system must be useful and reliable first.
@@ -40,11 +40,11 @@ Build a production-grade Python SDK for session-scoped agent context management.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         ACMS SDK                                │
+│                         Gleanr SDK                                │
 ├─────────────────────────────────────────────────────────────────┤
 │  Public API                                                     │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │ ACMS(session_id, storage, embedder, config)             │   │
+│  │ Gleanr(session_id, storage, embedder, config)             │   │
 │  │ ├── await ingest(role, content, metadata) → TurnID      │   │
 │  │ ├── await recall(query, token_budget) → ContextItems    │   │
 │  │ ├── await close_episode(reason) → EpisodeID             │   │
@@ -85,14 +85,14 @@ Build a production-grade Python SDK for session-scoped agent context management.
 ## Module Structure
 
 ```
-acms/
-├── __init__.py                 # Public API: ACMS, exceptions, types
+gleanr/
+├── __init__.py                 # Public API: Gleanr, exceptions, types
 ├── py.typed                    # PEP 561 marker
 │
 ├── core/
 │   ├── __init__.py
-│   ├── session.py              # ACMS main class
-│   ├── config.py               # ACMSConfig with validation
+│   ├── session.py              # Gleanr main class
+│   ├── config.py               # GleanrConfig with validation
 │   └── context.py              # ContextItem, ContextAssembly
 │
 ├── models/
@@ -169,10 +169,10 @@ tests/
 
 ## Core Interfaces
 
-### 1. ACMS (Main Entry Point)
+### 1. Gleanr (Main Entry Point)
 
 ```python
-class ACMS:
+class Gleanr:
     """Session-scoped context manager for agents."""
 
     def __init__(
@@ -183,7 +183,7 @@ class ACMS:
         *,
         reflector: Reflector | None = None,
         token_counter: TokenCounter | None = None,
-        config: ACMSConfig | None = None,
+        config: GleanrConfig | None = None,
     ) -> None: ...
 
     async def ingest(
@@ -380,27 +380,27 @@ class OpenAIEmbedder:
 ## Exception Hierarchy
 
 ```python
-class ACMSError(Exception):
-    """Base exception for all ACMS errors."""
+class GleanrError(Exception):
+    """Base exception for all Gleanr errors."""
     pass
 
 
-class ConfigurationError(ACMSError):
+class ConfigurationError(GleanrError):
     """Invalid configuration."""
     pass
 
 
-class ValidationError(ACMSError):
+class ValidationError(GleanrError):
     """Input validation failed."""
     pass
 
 
-class StorageError(ACMSError):
+class StorageError(GleanrError):
     """Storage operation failed."""
     pass
 
 
-class ProviderError(ACMSError):
+class ProviderError(GleanrError):
     """Provider operation failed (embedder, reflector, etc.)."""
 
     def __init__(
@@ -413,17 +413,17 @@ class ProviderError(ACMSError):
     ) -> None: ...
 
 
-class TokenBudgetExceededError(ACMSError):
+class TokenBudgetExceededError(GleanrError):
     """Token budget cannot be satisfied."""
     pass
 
 
-class SessionNotFoundError(ACMSError):
+class SessionNotFoundError(GleanrError):
     """Session does not exist."""
     pass
 
 
-class EpisodeNotFoundError(ACMSError):
+class EpisodeNotFoundError(GleanrError):
     """Episode does not exist."""
     pass
 ```
@@ -481,19 +481,19 @@ class MarkerType(str, Enum):
 | `failure` | 0.2 | Failures prevent waste but less critical |
 | `custom:*` | 0.2 | Conservative default for custom markers |
 
-Weights are configurable via `ACMSConfig.marker_weights`.
+Weights are configurable via `GleanrConfig.marker_weights`.
 
 ### Explicit Marking
 
 ```python
-await acms.ingest(
+await gleanr.ingest(
     role="assistant",
     content="Using PostgreSQL for the database",
     markers=[MarkerType.DECISION],  # Type-safe
 )
 
 # Custom markers also allowed
-await acms.ingest(
+await gleanr.ingest(
     role="user",
     content="Remember this",
     markers=["custom:important"],
@@ -502,7 +502,7 @@ await acms.ingest(
 
 ### Auto-Detection (Default: Enabled)
 
-ACMS auto-detects markers from content patterns. Can be disabled via `ACMSConfig.auto_detect_markers = False`.
+Gleanr auto-detects markers from content patterns. Can be disabled via `GleanrConfig.auto_detect_markers = False`.
 
 | Pattern | Detected Marker |
 |---------|-----------------|
@@ -572,16 +572,16 @@ ACMS auto-detects markers from content patterns. Can be disabled via `ACMSConfig
 
 ### Why No Recency?
 
-| Concern | How ACMS Handles It |
+| Concern | How Gleanr Handles It |
 |---------|---------------------|
 | Recent context matters | Current episode always included first |
 | Old decisions still relevant | Markers boost old important turns |
 | Don't repeat old failures | Failure markers surface old mistakes |
 | Semantic drift over time | Vector search finds relevant old content |
 
-### What Agents Need vs. How ACMS Provides It
+### What Agents Need vs. How Gleanr Provides It
 
-| Agent Need | ACMS Feature | Confidence |
+| Agent Need | Gleanr Feature | Confidence |
 |------------|--------------|------------|
 | Task continuity | Current episode + goal markers | High |
 | Decision history | Decision markers + L2 facts | High |
@@ -593,7 +593,7 @@ ACMS auto-detects markers from content patterns. Can be disabled via `ACMSConfig
 
 ## Cache Layer
 
-Built-in LRU cache sits between ACMS and storage backend for hot data access.
+Built-in LRU cache sits between Gleanr and storage backend for hot data access.
 
 ```python
 @dataclass
@@ -619,7 +619,7 @@ class CacheConfig:
 - **Reads**: Check cache first, fall through to storage on miss
 - **Writes**: Write-through (write to both cache and storage)
 - **Invalidation**: LRU eviction when limits reached
-- **Session isolation**: Cache is per-session (one ACMS = one session)
+- **Session isolation**: Cache is per-session (one Gleanr = one session)
 
 ### What Gets Cached
 
@@ -676,7 +676,7 @@ async def with_retry(
   - [ ] `ContextItem`, `SessionStats` types
   - [ ] `Role`, `EpisodeStatus` enums
 - [ ] Exception hierarchy
-- [ ] `ACMSConfig` with validation
+- [ ] `GleanrConfig` with validation
 - [ ] Protocol definitions (`Embedder`, `Reflector`, `TokenCounter`)
 - [ ] `InMemoryBackend` for testing
 
@@ -685,7 +685,7 @@ async def with_retry(
 ### Phase 2: Core Pipeline (~3-4 days)
 **Goal:** Working ingest/recall with in-memory backend
 
-- [ ] `ACMS` class skeleton
+- [ ] `Gleanr` class skeleton
 - [ ] `IngestionPipeline`
   - [ ] Turn creation and validation
   - [ ] Episode assignment
@@ -794,13 +794,13 @@ async def with_retry(
 ## Files to Create (Phase 1)
 
 ```
-acms/
+gleanr/
 ├── __init__.py
 ├── py.typed
 ├── core/
 │   ├── __init__.py
-│   ├── session.py          # ACMS stub
-│   └── config.py           # ACMSConfig
+│   ├── session.py          # Gleanr stub
+│   └── config.py           # GleanrConfig
 ├── models/
 │   ├── __init__.py
 │   ├── turn.py
@@ -854,7 +854,7 @@ openai = ["openai>=1.0"]
 anthropic = ["anthropic>=0.20"]
 tiktoken = ["tiktoken"]
 dev = ["pytest", "pytest-asyncio", "ruff", "mypy", "httpx"]
-all = ["acms[sqlite,chroma,openai,anthropic,tiktoken]"]
+all = ["gleanr[sqlite,chroma,openai,anthropic,tiktoken]"]
 ```
 
 ---
@@ -877,7 +877,7 @@ all = ["acms[sqlite,chroma,openai,anthropic,tiktoken]"]
 
 ---
 
-## Evaluation Plan — Stress-Testing ACMS
+## Evaluation Plan — Stress-Testing Gleanr
 
 ### Current Baseline
 
@@ -885,13 +885,13 @@ The initial evaluation harness (`examples/evaluation/`) runs the `decision_track
 
 **Why the current tests pass easily:**
 
-1. All setup messages trigger ACMS marker auto-detection ("Decision:", "Constraint:", etc.) — marked turns get priority in recall regardless of age
+1. All setup messages trigger Gleanr marker auto-detection ("Decision:", "Constraint:", etc.) — marked turns get priority in recall regardless of age
 2. Keywords are highly distinctive (FastAPI, PostgreSQL, Redis, PyJWT) — minimal chance of embedding confusion
 3. Filler messages are semantically bland ("Can you elaborate?") — they don't compete with setup facts for vector similarity
 4. Token budget (2000 tokens) is generous relative to fact volume (2–5 facts)
 5. Only one scenario runs per evaluation
 
-To produce meaningful, publishable benchmarks we need to find the **failure boundaries** — the conditions under which ACMS recall degrades — and then demonstrate that ACMS handles them gracefully or identify where improvements are needed.
+To produce meaningful, publishable benchmarks we need to find the **failure boundaries** — the conditions under which Gleanr recall degrades — and then demonstrate that Gleanr handles them gracefully or identify where improvements are needed.
 
 ---
 
@@ -939,7 +939,7 @@ Probe turn 30: "What API framework are we using?"
   → failure: if only Flask is recalled
 ```
 
-This tests whether ACMS recall pipeline handles temporal ordering — both turns will have markers, but the correction must be surfaced.
+This tests whether Gleanr recall pipeline handles temporal ordering — both turns will have markers, but the correction must be surfaced.
 
 #### E1.4 — Unmarked Facts (Pure Semantic Recall)
 
@@ -951,7 +951,7 @@ Setup: "The client specifically asked for a blue color scheme with rounded corne
        "The team prefers to use Tailwind CSS over Bootstrap."
 ```
 
-None of these start with "Decision:", "Constraint:", etc. Without markers, ACMS must rely purely on semantic similarity. This isolates vector search quality from marker boosting.
+None of these start with "Decision:", "Constraint:", etc. Without markers, Gleanr must rely purely on semantic similarity. This isolates vector search quality from marker boosting.
 
 #### E1.5 — High Fact Density
 
@@ -970,7 +970,7 @@ Tests whether recall degrades when many facts compete for limited token budget (
 
 ### Phase E2: Parameter Sensitivity Analysis
 
-**Goal:** Find the degradation curves for key ACMS configuration knobs.
+**Goal:** Find the degradation curves for key Gleanr configuration knobs.
 
 #### E2.1 — Token Budget Sweep
 
@@ -994,13 +994,13 @@ Vary `current_episode_budget_pct`: `0.2, 0.3, 0.4, 0.5, 0.6`.
 
 Lower values give more room for past facts/turns; higher values prioritize recent context. The optimal balance depends on fact density.
 
-Implementation: Requires exposing this knob through `AgentConfig` → `ACMSConfig.recall`.
+Implementation: Requires exposing this knob through `AgentConfig` → `GleanrConfig.recall`.
 
 ---
 
 ### Phase E3: Scale and Endurance
 
-**Goal:** Test ACMS at scale beyond what any reasonable demo would show.
+**Goal:** Test Gleanr at scale beyond what any reasonable demo would show.
 
 #### E3.1 — Long Conversations
 
@@ -1016,7 +1016,7 @@ Tests whether L2 facts (reflection output) carry forward reliably across many ep
 
 #### E3.3 — Latency Under Load
 
-Measure how ACMS overhead grows as the session database accumulates:
+Measure how Gleanr overhead grows as the session database accumulates:
 - At 10, 50, 100, 200 turns, what's the recall latency?
 - Does vector search slow as embedding count grows?
 - Does reflection time grow with episode count?
@@ -1033,7 +1033,7 @@ Already partially measured by our TurnLatency instrumentation — need to add a 
 
 Current metric: "Was the expected keyword found anywhere in recalled items?" (recall only, no precision).
 
-Add: "What fraction of recalled items are actually relevant to the probe?" High recall with low precision means ACMS is flooding the context window with irrelevant content.
+Add: "What fraction of recalled items are actually relevant to the probe?" High recall with low precision means Gleanr is flooding the context window with irrelevant content.
 
 Implementation: For probe turns, classify each recalled item as relevant/irrelevant (keyword presence in the item). Report `precision = relevant_recalled / total_recalled`.
 
@@ -1050,7 +1050,7 @@ This penalizes a system that recalls the right fact but buries it at position 8 
 
 #### E4.3 — LLM-as-Judge (Response Quality)
 
-The current harness only checks what ACMS recalls, not what the agent says. A complete evaluation checks the agent's actual response.
+The current harness only checks what Gleanr recalls, not what the agent says. A complete evaluation checks the agent's actual response.
 
 For each probe, run a separate LLM call:
 ```
@@ -1063,7 +1063,7 @@ Score the response: Does it correctly answer the question using the expected inf
 Rating: 1 (correct), 0.5 (partial), 0 (wrong/missing)
 ```
 
-This catches cases where ACMS recalls the right content but the agent hallucinates or ignores it.
+This catches cases where Gleanr recalls the right content but the agent hallucinates or ignores it.
 
 #### E4.4 — Composite Cross-Scenario Score
 
@@ -1103,7 +1103,7 @@ Turn 5: "Decision: Since we chose Python, we'll use SQLAlchemy as the ORM."
 Turn 8: "Decision: SQLAlchemy needs us to define models — using the declarative base pattern."
 Probe: "What ORM pattern are we using?"
   → Expected: declarative base
-  → Bonus: Does ACMS also surface the chain (Python → SQLAlchemy → declarative base)?
+  → Bonus: Does Gleanr also surface the chain (Python → SQLAlchemy → declarative base)?
 ```
 
 #### E5.3 — Temporal Degradation Curve
@@ -1112,7 +1112,7 @@ Same single fact, same probe repeated at turns 10, 20, 30, 50, 75, 100, 150, 200
 
 #### E5.4 — Budget Pressure
 
-20 marked facts, token_budget=1000. More important content than budget can hold. Tests whether ACMS's scoring algorithm surfaces the *most relevant* facts for each probe rather than just the highest-marker-boosted ones.
+20 marked facts, token_budget=1000. More important content than budget can hold. Tests whether Gleanr's scoring algorithm surfaces the *most relevant* facts for each probe rather than just the highest-marker-boosted ones.
 
 #### E5.5 — Noise Injection
 
@@ -1159,13 +1159,13 @@ Once the above phases are implemented, the evaluation should produce:
 
 1. **Decision Persistence Curve** — Recall hit rate vs. conversation length (10–200 turns)
 2. **Token Budget Sensitivity** — Recall vs. budget (500–4000 tokens)
-3. **ACMS Overhead Profile** — Milliseconds per turn breakdown (ingest, recall, reflection)
+3. **Gleanr Overhead Profile** — Milliseconds per turn breakdown (ingest, recall, reflection)
 4. **Precision-Recall Tradeoff** — Hit rate vs. precision across scenarios
 5. **Scenario Difficulty Spectrum** — Composite score across easy → hard scenarios
 6. **Temporal Degradation** — Score vs. turn distance from fact injection
 7. **Comparison Table** — Marked vs. unmarked fact recall to quantify marker value
 
-These charts and tables form the evidence section of the ACMS README and any blog/paper about the project.
+These charts and tables form the evidence section of the Gleanr README and any blog/paper about the project.
 
 ---
 

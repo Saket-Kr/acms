@@ -1,4 +1,4 @@
-"""Entry point for the ACMS evaluation harness."""
+"""Entry point for the Gleanr evaluation harness."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ console = Console()
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="ACMS Evaluation Harness - Automated testing for ACMS effectiveness",
+        description="Gleanr Evaluation Harness - Automated testing for Gleanr effectiveness",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

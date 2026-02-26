@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from acms.cache import CacheConfig, LRUCache
+from gleanr.cache import CacheConfig, LRUCache
 
 
 class TestLRUCache:

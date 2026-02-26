@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from acms.utils.vectors import cosine_similarity
+from gleanr.utils.vectors import cosine_similarity
 
 
 class TestCosineSimilarity:

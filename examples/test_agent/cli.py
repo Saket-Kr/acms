@@ -10,7 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 if TYPE_CHECKING:
-    from acms.models import ContextItem
+    from gleanr.models import ContextItem
 
     from examples.test_agent.agent import AgentResponse
 
@@ -22,7 +22,7 @@ def print_welcome(session_id: str, is_new: bool) -> None:
     status = "new" if is_new else "resumed"
     console.print(
         Panel(
-            f"[bold blue]ACMS Test Agent[/bold blue]\n"
+            f"[bold blue]Gleanr Test Agent[/bold blue]\n"
             f"Session: [green]{session_id}[/green] ({status})\n"
             f"Type [yellow]/help[/yellow] for commands",
             title="Welcome",

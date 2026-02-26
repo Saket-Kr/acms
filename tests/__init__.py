@@ -1,1 +1,1 @@
-"""ACMS test suite."""
+"""Gleanr test suite."""

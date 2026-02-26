@@ -1,10 +1,10 @@
-"""Unit tests for ACMS models."""
+"""Unit tests for Gleanr models."""
 
 from datetime import datetime
 
 import pytest
 
-from acms.models import (
+from gleanr.models import (
     ContextItem,
     Episode,
     EpisodeStatus,

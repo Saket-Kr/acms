@@ -2,9 +2,9 @@
 
 import pytest
 
-from acms.errors import ValidationError
-from acms.models import MarkerType, Role
-from acms.utils import (
+from gleanr.errors import ValidationError
+from gleanr.models import MarkerType, Role
+from gleanr.utils import (
     validate_content,
     validate_markers,
     validate_metadata,

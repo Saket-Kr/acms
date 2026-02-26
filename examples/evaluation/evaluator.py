@@ -1,4 +1,4 @@
-"""Main evaluation engine for ACMS."""
+"""Main evaluation engine for Gleanr."""
 
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ class Evaluator:
             data_dir.mkdir(parents=True, exist_ok=True)
             return data_dir, None
 
-        temp_dir = tempfile.TemporaryDirectory(prefix="acms_eval_")
+        temp_dir = tempfile.TemporaryDirectory(prefix="gleanr_eval_")
         return Path(temp_dir.name), temp_dir
 
     async def run_evaluation(self) -> EvaluationReport:
@@ -117,7 +117,7 @@ class Evaluator:
         start_time = time.time()
         turn_count_groups: list[TurnCountGroupMetrics] = []
 
-        self._console.print(f"\n[bold blue]ACMS Evaluation Starting[/bold blue]")
+        self._console.print(f"\n[bold blue]Gleanr Evaluation Starting[/bold blue]")
         self._console.print(f"Scenario: [green]{self._scenario.name}[/green]")
         self._console.print(f"Turn counts: {self.config.turn_counts}")
         self._console.print(f"Iterations per turn count: {self.config.iterations_per_turn_count}")
@@ -358,7 +358,7 @@ class Evaluator:
                 # Build latency breakdown from agent timings
                 latency: TurnLatency | None = None
                 if response.timings is not None:
-                    total_acms = (
+                    total_gleanr = (
                         response.timings.ingest_user_ms
                         + response.timings.recall_ms
                         + response.timings.ingest_assistant_ms
@@ -369,8 +369,8 @@ class Evaluator:
                         recall_ms=response.timings.recall_ms,
                         ingest_assistant_ms=response.timings.ingest_assistant_ms,
                         ingest_facts_ms=response.timings.ingest_facts_ms,
-                        total_acms_ms=total_acms,
-                        llm_ms=max(0, turn_elapsed_ms - total_acms),
+                        total_gleanr_ms=total_gleanr,
+                        llm_ms=max(0, turn_elapsed_ms - total_gleanr),
                         had_reflection=had_reflection,
                     )
 

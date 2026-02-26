@@ -1,4 +1,4 @@
-"""ACMS Evaluation Harness - Automated testing for ACMS effectiveness."""
+"""Gleanr Evaluation Harness - Automated testing for Gleanr effectiveness."""
 
 from __future__ import annotations
 
