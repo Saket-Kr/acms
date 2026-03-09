@@ -28,8 +28,14 @@ logger = logging.getLogger(__name__)
 try:
     from openai import (
         APIConnectionError as OpenAIConnectionError,
+    )
+    from openai import (
         APITimeoutError as OpenAITimeoutError,
+    )
+    from openai import (
         InternalServerError as OpenAIInternalError,
+    )
+    from openai import (
         RateLimitError as OpenAIRateLimitError,
     )
 
@@ -59,7 +65,7 @@ class OpenAIEmbedder:
 
     def __init__(
         self,
-        client: "AsyncOpenAI",
+        client: AsyncOpenAI,
         model: str = "text-embedding-3-small",
         *,
         dimension: int | None = None,
@@ -132,7 +138,7 @@ class OpenAIReflector:
 
     def __init__(
         self,
-        client: "AsyncOpenAI",
+        client: AsyncOpenAI,
         model: str = "gpt-4o-mini",
         *,
         max_facts: int = 5,
@@ -156,7 +162,7 @@ class OpenAIReflector:
             retryable_exceptions=_OPENAI_RETRYABLE,
         )
 
-    async def reflect(self, episode: "Episode", turns: list["Turn"]) -> list[Fact]:
+    async def reflect(self, episode: Episode, turns: list[Turn]) -> list[Fact]:
         """Extract semantic facts from an episode.
 
         Args:
@@ -173,9 +179,7 @@ class OpenAIReflector:
             return []
 
         try:
-            turns_text = "\n".join(
-                f"[{t.role.value}]: {t.content}" for t in turns
-            )
+            turns_text = "\n".join(f"[{t.role.value}]: {t.content}" for t in turns)
 
             prompt = REFLECTION_PROMPT.format(
                 turns=turns_text,
@@ -202,14 +206,14 @@ class OpenAIReflector:
                 cause=e,
             ) from e
 
-    def _parse_facts(self, content: str, episode: "Episode") -> list[Fact]:
+    def _parse_facts(self, content: str, episode: Episode) -> list[Fact]:
         """Parse facts from LLM response."""
         return parse_reflection_facts(content, episode)
 
     async def reflect_with_consolidation(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
+        episode: Episode,
+        turns: list[Turn],
         prior_facts: list[Fact],
     ) -> list[ConsolidationAction]:
         """Consolidate prior facts with new episode content."""
@@ -252,6 +256,4 @@ class OpenAIReflector:
 
     @staticmethod
     def _log_retry(attempt: int, error: Exception) -> None:
-        logger.warning(
-            "OpenAI API call failed (attempt %d), retrying: %s", attempt, error
-        )
+        logger.warning("OpenAI API call failed (attempt %d), retrying: %s", attempt, error)

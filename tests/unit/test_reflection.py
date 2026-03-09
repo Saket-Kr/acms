@@ -515,7 +515,7 @@ class TestFactScoping:
         episode = _make_episode(episode_id="ep_2")
         turns = _make_turns(episode_id="ep_2")
 
-        result = await runner._scope_relevant_facts(episode, turns, facts)
+        result = await runner._scope_relevant_facts(turns, facts)
         assert len(result) == 5
 
     @pytest.mark.asyncio
@@ -532,20 +532,17 @@ class TestFactScoping:
             FakeConsolidatingReflector(), storage=storage
         )
 
-        episode = _make_episode()
         turns = _make_turns()
 
         # With NullEmbedder this will include all anyway, but the code
         # path for facts without embeddings is tested
-        result = await runner._scope_relevant_facts(episode, turns, [fact_no_emb])
+        result = await runner._scope_relevant_facts(turns, [fact_no_emb])
         assert len(result) == 1
 
     @pytest.mark.asyncio
     async def test_empty_prior_facts_returns_empty(self) -> None:
         runner, _ = await _build_runner(FakeConsolidatingReflector())
-        result = await runner._scope_relevant_facts(
-            _make_episode(), _make_turns(), []
-        )
+        result = await runner._scope_relevant_facts(_make_turns(), [])
         assert result == []
 
 

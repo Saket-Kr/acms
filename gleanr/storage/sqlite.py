@@ -20,7 +20,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         return 0.0
 
-    dot_product = sum(x * y for x, y in zip(a, b))
+    dot_product = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
 
@@ -116,17 +116,16 @@ class SQLiteBackend(StorageBackend):
             path: Path to database file, or ":memory:" for in-memory
             check_same_thread: SQLite thread check setting
         """
-        try:
-            import aiosqlite
-        except ImportError as e:
+        import importlib.util
+
+        if importlib.util.find_spec("aiosqlite") is None:
             raise ImportError(
-                "aiosqlite is required for SQLiteBackend. "
-                "Install with: pip install gleanr[sqlite]"
-            ) from e
+                "aiosqlite is required for SQLiteBackend. Install with: pip install gleanr[sqlite]"
+            )
 
         self._path = str(path)
         self._check_same_thread = check_same_thread
-        self._connection: "aiosqlite.Connection | None" = None
+        self._connection: aiosqlite.Connection | None = None
 
     async def initialize(self) -> None:
         """Initialize the database."""
@@ -161,9 +160,7 @@ class SQLiteBackend(StorageBackend):
             await conn.execute("ALTER TABLE facts ADD COLUMN superseded_by TEXT")
 
         if "supersedes" not in existing_columns:
-            await conn.execute(
-                "ALTER TABLE facts ADD COLUMN supersedes TEXT NOT NULL DEFAULT '[]'"
-            )
+            await conn.execute("ALTER TABLE facts ADD COLUMN supersedes TEXT NOT NULL DEFAULT '[]'")
 
         await conn.commit()
 
@@ -173,7 +170,7 @@ class SQLiteBackend(StorageBackend):
             await self._connection.close()
             self._connection = None
 
-    def _ensure_connected(self) -> "aiosqlite.Connection":
+    def _ensure_connected(self) -> aiosqlite.Connection:
         """Ensure database is connected."""
         if self._connection is None:
             raise RuntimeError("Database not initialized. Call initialize() first.")
@@ -211,9 +208,7 @@ class SQLiteBackend(StorageBackend):
     async def get_turn(self, turn_id: str) -> Turn | None:
         """Get a turn by ID."""
         conn = self._ensure_connected()
-        async with conn.execute(
-            "SELECT * FROM turns WHERE id = ?", (turn_id,)
-        ) as cursor:
+        async with conn.execute("SELECT * FROM turns WHERE id = ?", (turn_id,)) as cursor:
             row = await cursor.fetchone()
             return self._row_to_turn(row) if row else None
 
@@ -324,9 +319,7 @@ class SQLiteBackend(StorageBackend):
     async def get_episode(self, episode_id: str) -> Episode | None:
         """Get an episode by ID."""
         conn = self._ensure_connected()
-        async with conn.execute(
-            "SELECT * FROM episodes WHERE id = ?", (episode_id,)
-        ) as cursor:
+        async with conn.execute("SELECT * FROM episodes WHERE id = ?", (episode_id,)) as cursor:
             row = await cursor.fetchone()
             return self._row_to_episode(row) if row else None
 
@@ -376,11 +369,7 @@ class SQLiteBackend(StorageBackend):
             session_id=row["session_id"],
             status=EpisodeStatus(row["status"]),
             created_at=datetime.fromisoformat(row["created_at"]),
-            closed_at=(
-                datetime.fromisoformat(row["closed_at"])
-                if row["closed_at"]
-                else None
-            ),
+            closed_at=(datetime.fromisoformat(row["closed_at"]) if row["closed_at"] else None),
             close_reason=row["close_reason"],
             summary=row["summary"],
             metadata=json.loads(row["metadata"]),
@@ -416,9 +405,7 @@ class SQLiteBackend(StorageBackend):
     async def get_embedding(self, id: str) -> list[float] | None:
         """Get an embedding by ID."""
         conn = self._ensure_connected()
-        async with conn.execute(
-            "SELECT embedding FROM embeddings WHERE id = ?", (id,)
-        ) as cursor:
+        async with conn.execute("SELECT embedding FROM embeddings WHERE id = ?", (id,)) as cursor:
             row = await cursor.fetchone()
             if row:
                 result: list[float] = json.loads(row["embedding"])
@@ -439,9 +426,7 @@ class SQLiteBackend(StorageBackend):
         """
         conn = self._ensure_connected()
 
-        async with conn.execute(
-            "SELECT id, embedding, metadata FROM embeddings"
-        ) as cursor:
+        async with conn.execute("SELECT id, embedding, metadata FROM embeddings") as cursor:
             rows = await cursor.fetchall()
 
         results: list[tuple[str, float, dict[str, Any]]] = []
@@ -451,9 +436,7 @@ class SQLiteBackend(StorageBackend):
 
             # Apply filter
             if filter:
-                match = all(
-                    metadata.get(key) == value for key, value in filter.items()
-                )
+                match = all(metadata.get(key) == value for key, value in filter.items())
                 if not match:
                     continue
 
@@ -465,10 +448,7 @@ class SQLiteBackend(StorageBackend):
         # Sort by similarity (descending)
         results.sort(key=lambda x: x[1], reverse=True)
 
-        return [
-            VectorSearchResult(id=r[0], score=r[1], metadata=r[2])
-            for r in results[:k]
-        ]
+        return [VectorSearchResult(id=r[0], score=r[1], metadata=r[2]) for r in results[:k]]
 
     # Fact operations
 

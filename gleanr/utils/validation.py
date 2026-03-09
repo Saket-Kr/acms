@@ -31,7 +31,7 @@ def validate_role(role: str | Role) -> Role:
         raise ValidationError(
             f"Invalid role: {role}. Must be one of: {valid_roles}",
             field="role",
-        )
+        ) from None
 
 
 def validate_content(content: str) -> str:

@@ -17,17 +17,17 @@ Example:
 """
 
 from gleanr.core import (
+    EpisodeBoundaryConfig,
     Gleanr,
     GleanrConfig,
-    EpisodeBoundaryConfig,
     RecallConfig,
     ReflectionConfig,
     create_config,
 )
 from gleanr.errors import (
-    GleanrError,
     ConfigurationError,
     EpisodeNotFoundError,
+    GleanrError,
     ProviderError,
     ReflectionError,
     RetryExhaustedError,
@@ -37,6 +37,7 @@ from gleanr.errors import (
     TurnNotFoundError,
     ValidationError,
 )
+from gleanr.memory.reflection import ReflectionTrace, ReflectionTraceCallback
 from gleanr.models import (
     ContextItem,
     Episode,
@@ -47,7 +48,6 @@ from gleanr.models import (
     SessionStats,
     Turn,
 )
-from gleanr.memory.reflection import ReflectionTrace, ReflectionTraceCallback
 from gleanr.providers import Embedder, NullEmbedder, NullReflector, Reflector, TokenCounter
 from gleanr.storage import InMemoryBackend, StorageBackend
 

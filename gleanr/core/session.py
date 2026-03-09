@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from gleanr.core.config import GleanrConfig
-from gleanr.errors import ValidationError
 from gleanr.memory import EpisodeManager, IngestionPipeline, RecallPipeline, ReflectionRunner
 from gleanr.memory.reflection import ReflectionTraceCallback
 from gleanr.models import ContextItem, Role, SessionStats
@@ -177,9 +175,7 @@ class Gleanr:
     def _ensure_initialized(self) -> None:
         """Ensure Gleanr is initialized."""
         if not self._initialized:
-            raise RuntimeError(
-                "Gleanr not initialized. Call await gleanr.initialize() first."
-            )
+            raise RuntimeError("Gleanr not initialized. Call await gleanr.initialize() first.")
         if self._closed:
             raise RuntimeError("Gleanr has been closed.")
 
@@ -189,7 +185,7 @@ class Gleanr:
         content: str,
         *,
         actor_id: str | None = None,
-        markers: list[str | "MarkerType"] | None = None,
+        markers: list[str | MarkerType] | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> str:
         """Ingest a turn into memory.
@@ -215,9 +211,7 @@ class Gleanr:
         # Convert MarkerType enums to strings
         marker_strings: list[str] | None = None
         if markers:
-            marker_strings = [
-                m.value if hasattr(m, "value") else str(m) for m in markers
-            ]
+            marker_strings = [m.value if hasattr(m, "value") else str(m) for m in markers]
 
         return await self._ingestion.ingest(
             role=role,
@@ -371,7 +365,7 @@ class Gleanr:
 
         self._closed = True
 
-    async def __aenter__(self) -> "Gleanr":
+    async def __aenter__(self) -> Gleanr:
         """Async context manager entry."""
         await self.initialize()
         return self

@@ -1,9 +1,9 @@
 """Gleanr exception hierarchy."""
 
 from gleanr.errors.exceptions import (
-    GleanrError,
     ConfigurationError,
     EpisodeNotFoundError,
+    GleanrError,
     ProviderError,
     ReflectionError,
     RetryExhaustedError,

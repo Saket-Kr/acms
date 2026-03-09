@@ -15,7 +15,7 @@ def cosine_similarity(a: list[float], b: list[float]) -> float:
     if len(a) != len(b):
         raise ValueError(f"Vector dimensions must match: {len(a)} != {len(b)}")
 
-    dot_product = sum(x * y for x, y in zip(a, b))
+    dot_product = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(x * x for x in b))
 
@@ -160,10 +160,7 @@ class InMemoryBackend(StorageBackend):
         results.sort(key=lambda x: x[1], reverse=True)
 
         # Return top k
-        return [
-            VectorSearchResult(id=r[0], score=r[1], metadata=r[2])
-            for r in results[:k]
-        ]
+        return [VectorSearchResult(id=r[0], score=r[1], metadata=r[2]) for r in results[:k]]
 
     # Fact operations
 
@@ -220,9 +217,7 @@ class InMemoryBackend(StorageBackend):
             "total_facts": len(facts),
             "open_episode_id": open_episode.id if open_episode else None,
             "open_episode_turn_count": (
-                len([t for t in turns if t.episode_id == open_episode.id])
-                if open_episode
-                else 0
+                len([t for t in turns if t.episode_id == open_episode.id]) if open_episode else 0
             ),
             "total_tokens_ingested": total_tokens,
             "created_at": created_at,

@@ -58,6 +58,8 @@ all = [
 Homepage = "https://github.com/Saket-Kr/gleanr"
 Documentation = "https://github.com/Saket-Kr/gleanr#readme"
 Repository = "https://github.com/Saket-Kr/gleanr"
+Changelog = "https://github.com/Saket-Kr/gleanr/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Saket-Kr/gleanr/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["gleanr"]
@@ -89,6 +91,11 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Provider implementations conform to Reflector/ConsolidatingReflector protocols;
+# unused arguments (e.g. `episode`) are required by the interface contract.
+"gleanr/providers/*.py" = ["ARG002"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["gleanr"]

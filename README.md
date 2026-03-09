@@ -56,16 +56,22 @@ Gleanr solves this by automatically tracking what matters and recalling it when 
 ## Installation
 
 ```bash
-# Clone the repository
+# Core package (in-memory storage, no provider dependencies)
+pip install gleanr
+
+# With specific extras
+pip install "gleanr[sqlite]"         # SQLite storage backend
+pip install "gleanr[openai]"         # OpenAI provider
+pip install "gleanr[anthropic]"      # Anthropic provider
+pip install "gleanr[all]"            # All optional dependencies
+```
+
+For development:
+
+```bash
 git clone https://github.com/Saket-Kr/gleanr.git
 cd gleanr
-
-# Install with your preferred extras
-pip install -e ".[sqlite]"           # SQLite storage backend
-pip install -e ".[openai]"           # OpenAI embeddings
-pip install -e ".[anthropic]"        # Anthropic embeddings
-pip install -e ".[examples]"         # Test agent dependencies
-pip install -e ".[dev]"              # Development tools
+pip install -e ".[dev]"
 ```
 
 ## Quick Start
@@ -127,8 +133,8 @@ from gleanr.core.config import ReflectionConfig
 config = GleanrConfig(
     reflection=ReflectionConfig(
         enabled=True,
-        min_episode_turns=3,
-        max_facts_per_episode=5,
+        min_episode_turns=2,
+        max_facts_per_episode=10,
         dedup_similarity_threshold=0.95,  # Prevent duplicate facts
     )
 )
@@ -389,22 +395,25 @@ config = GleanrConfig(
     auto_detect_markers=True,  # Auto-detect decision/constraint/etc.
 
     episode_boundary=EpisodeBoundaryConfig(
-        max_turns=20,              # Close episode after N turns
-        max_time_gap_seconds=1800, # Close after 30min gap
-        close_on_tool_result=True, # Close after tool completion
+        max_turns=6,                # Close episode after N turns
+        max_time_gap_seconds=1800,  # Close after 30min gap
+        close_on_tool_result=True,  # Close after tool completion
     ),
 
     recall=RecallConfig(
-        default_token_budget=2000,
-        current_episode_budget_pct=0.5,  # 50% budget for current episode
+        default_token_budget=4000,
+        current_episode_budget_pct=0.2,  # 20% budget for current episode
+        min_relevance_threshold=0.3,     # Filter low-relevance facts from recall
     ),
 
     reflection=ReflectionConfig(
         enabled=True,
-        min_episode_turns=3,
-        max_facts_per_episode=5,
-        consolidation_similarity_threshold=0.3,  # Scoping threshold for prior facts
-        dedup_similarity_threshold=0.95,          # Duplicate detection threshold
+        min_episode_turns=2,
+        max_facts_per_episode=10,
+        max_active_facts=100,                     # Archive excess facts automatically
+        consolidation_similarity_threshold=0.15,   # Scoping threshold for prior facts
+        consolidation_max_unscoped_facts=50,       # Skip scoping below this count
+        dedup_similarity_threshold=0.95,           # Duplicate detection threshold
     ),
 )
 ```

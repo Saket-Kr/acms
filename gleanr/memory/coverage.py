@@ -20,15 +20,66 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Common English stop words to exclude from keyword extraction.
-_STOP_WORDS: frozenset[str] = frozenset({
-    "the", "and", "for", "are", "but", "not", "you", "all", "can",
-    "had", "her", "was", "one", "our", "out", "has", "have", "been",
-    "from", "with", "they", "this", "that", "will", "would", "there",
-    "their", "what", "about", "which", "when", "make", "like", "been",
-    "could", "into", "than", "its", "over", "such", "after", "also",
-    "did", "some", "then", "them", "each", "does", "how", "may",
-    "much", "should", "these", "just", "use", "used", "using",
-})
+_STOP_WORDS: frozenset[str] = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "are",
+        "but",
+        "not",
+        "you",
+        "all",
+        "can",
+        "had",
+        "her",
+        "was",
+        "one",
+        "our",
+        "out",
+        "has",
+        "have",
+        "been",
+        "from",
+        "with",
+        "they",
+        "this",
+        "that",
+        "will",
+        "would",
+        "there",
+        "their",
+        "what",
+        "about",
+        "which",
+        "when",
+        "make",
+        "like",
+        "could",
+        "into",
+        "than",
+        "its",
+        "over",
+        "such",
+        "after",
+        "also",
+        "did",
+        "some",
+        "then",
+        "them",
+        "each",
+        "does",
+        "how",
+        "may",
+        "much",
+        "should",
+        "these",
+        "just",
+        "use",
+        "used",
+        "using",
+    }
+)
 
 
 def extract_keywords(text: str) -> set[str]:
@@ -38,14 +89,15 @@ def extract_keywords(text: str) -> set[str]:
     """
     words = text.lower().split()
     return {
-        w.strip(".,;:!?\"'()[]{}") for w in words
+        w.strip(".,;:!?\"'()[]{}")
+        for w in words
         if len(w) >= 3 and w.lower().strip(".,;:!?\"'()[]{}") not in _STOP_WORDS
     }
 
 
 def validate_coverage(
-    prior_facts: list["Fact"],
-    actions: list["ConsolidationAction"],
+    prior_facts: list[Fact],
+    actions: list[ConsolidationAction],
 ) -> list[str]:
     """Check that every prior fact is covered by at least one action.
 
@@ -90,11 +142,7 @@ def validate_coverage(
 
         # Substring fallback: catches morphological variants
         # (e.g., "postgres" in "postgresql", "python" in "python3")
-        if any(
-            fk in ak or ak in fk
-            for fk in fact_keywords
-            for ak in all_action_keywords
-        ):
+        if any(fk in ak or ak in fk for fk in fact_keywords for ak in all_action_keywords):
             continue
 
         warnings.append(

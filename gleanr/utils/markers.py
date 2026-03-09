@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Sequence
+from collections.abc import Sequence
 
 from gleanr.models.types import (
     DEFAULT_CUSTOM_MARKER_WEIGHT,

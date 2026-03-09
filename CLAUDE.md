@@ -41,3 +41,15 @@ Gleanr operates **before tool invocation** and **after agent output**.
 **Store:** Decisions made, constraints discovered, failures/retries, tool outcomes, session preferences
 
 **Never store:** Raw RAG results, web pages, redundant paraphrases, hidden reasoning
+
+## Release Process
+
+When cutting a new release:
+
+1. Bump version in `pyproject.toml` and `gleanr/__init__.py` (keep in sync).
+2. Update `CHANGELOG.md` following [Keep a Changelog](https://keepachangelog.com) format.
+3. Commit, tag (`vX.Y.Z`), push with `--tags`.
+4. Build: `python -m build`
+5. Upload: `twine upload dist/*`
+6. Create a GitHub Release from the tag with the changelog section as notes.
+7. The `Changelog` URL in `pyproject.toml` points to `CHANGELOG.md` — PyPI renders it as a sidebar link starting from the release that includes it.

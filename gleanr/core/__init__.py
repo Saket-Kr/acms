@@ -1,8 +1,8 @@
 """Gleanr core module."""
 
 from gleanr.core.config import (
-    GleanrConfig,
     EpisodeBoundaryConfig,
+    GleanrConfig,
     RecallConfig,
     ReflectionConfig,
     create_config,

@@ -5,8 +5,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from gleanr.errors import ReflectionError
 from gleanr.memory.coverage import validate_coverage
@@ -88,11 +89,11 @@ class ReflectionRunner:
     def __init__(
         self,
         session_id: str,
-        storage: "StorageBackend",
-        reflector: "Reflector",
-        embedder: "Embedder",
-        token_counter: "TokenCounter",
-        config: "GleanrConfig",
+        storage: StorageBackend,
+        reflector: Reflector,
+        embedder: Embedder,
+        token_counter: TokenCounter,
+        config: GleanrConfig,
     ) -> None:
         self._session_id = session_id
         self._storage = storage
@@ -100,8 +101,8 @@ class ReflectionRunner:
         self._embedder = embedder
         self._token_counter = token_counter
         self._config = config
-        self._pending_tasks: list[asyncio.Task[list["Fact"]]] = []
-        self._carried_turns: list["Turn"] = []
+        self._pending_tasks: list[asyncio.Task[list[Fact]]] = []
+        self._carried_turns: list[Turn] = []
         self._trace_callback: ReflectionTraceCallback | None = None
 
     def set_trace_callback(self, callback: ReflectionTraceCallback | None) -> None:
@@ -121,11 +122,11 @@ class ReflectionRunner:
 
     async def reflect_episode(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
+        episode: Episode,
+        turns: list[Turn],
         *,
         background: bool = False,
-    ) -> list["Fact"]:
+    ) -> list[Fact]:
         """Run reflection on an episode.
 
         Args:
@@ -159,9 +160,7 @@ class ReflectionRunner:
         self._carried_turns = []
 
         if background:
-            task = asyncio.create_task(
-                self._reflect_and_save(episode, combined_turns)
-            )
+            task = asyncio.create_task(self._reflect_and_save(episode, combined_turns))
             self._pending_tasks.append(task)
             self._pending_tasks = [t for t in self._pending_tasks if not t.done()]
             return []
@@ -181,7 +180,7 @@ class ReflectionRunner:
                 task.cancel()
         self._pending_tasks = []
 
-    async def flush_carried_turns(self, episode: "Episode") -> list["Fact"]:
+    async def flush_carried_turns(self, episode: Episode) -> list[Fact]:
         """Force-reflect any buffered turns, regardless of min count.
 
         Called during session close to ensure no turns are lost.
@@ -210,30 +209,24 @@ class ReflectionRunner:
 
     async def _reflect_and_save(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
-    ) -> list["Fact"]:
+        episode: Episode,
+        turns: list[Turn],
+    ) -> list[Fact]:
         """Dispatch to consolidation or legacy path."""
         start = time.perf_counter()
         trace = self._build_trace_header(episode, turns) if self._trace_callback else None
 
         try:
             if self._supports_consolidation():
-                prior_facts = await self._storage.get_active_facts_by_session(
-                    self._session_id
-                )
+                prior_facts = await self._storage.get_active_facts_by_session(self._session_id)
                 if prior_facts:
-                    result = await self._consolidate_and_save(
-                        episode, turns, prior_facts, trace
-                    )
+                    result = await self._consolidate_and_save(episode, turns, prior_facts, trace)
                     self._emit_trace(trace, start)
                     await self._enforce_active_fact_limit()
                     return result
 
             # First episode, no prior facts, or legacy reflector
-            existing_facts = await self._storage.get_active_facts_by_session(
-                self._session_id
-            )
+            existing_facts = await self._storage.get_active_facts_by_session(self._session_id)
             result = await self._legacy_reflect_and_save(
                 episode, turns, trace, existing_facts=existing_facts or None
             )
@@ -259,15 +252,13 @@ class ReflectionRunner:
 
     async def _consolidate_and_save(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
-        all_active_facts: list["Fact"],
+        episode: Episode,
+        turns: list[Turn],
+        all_active_facts: list[Fact],
         trace: ReflectionTrace | None = None,
-    ) -> list["Fact"]:
+    ) -> list[Fact]:
         """Run consolidation: scope facts, call reflector, apply actions."""
-        relevant_facts = await self._scope_relevant_facts(
-            episode, turns, all_active_facts
-        )
+        relevant_facts = await self._scope_relevant_facts(turns, all_active_facts)
 
         if trace:
             trace.mode = "consolidation"
@@ -277,9 +268,7 @@ class ReflectionRunner:
             ]
             trace.scoped_fact_count = len(relevant_facts)
 
-        actions = await self._reflector.reflect_with_consolidation(
-            episode, turns, relevant_facts
-        )
+        actions = await self._reflector.reflect_with_consolidation(episode, turns, relevant_facts)
 
         if trace and actions:
             trace.raw_actions = [
@@ -296,8 +285,7 @@ class ReflectionRunner:
 
         if not actions:
             logger.warning(
-                "Consolidation returned no actions for episode %s; "
-                "falling back to legacy path",
+                "Consolidation returned no actions for episode %s; falling back to legacy path",
                 episode.id,
             )
             return await self._legacy_reflect_and_save(
@@ -306,16 +294,13 @@ class ReflectionRunner:
 
         validate_coverage(relevant_facts, actions)
 
-        return await self._apply_consolidation_actions(
-            episode, actions, all_active_facts, trace
-        )
+        return await self._apply_consolidation_actions(episode, actions, all_active_facts, trace)
 
     async def _scope_relevant_facts(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
-        prior_facts: list["Fact"],
-    ) -> list["Fact"]:
+        turns: list[Turn],
+        prior_facts: list[Fact],
+    ) -> list[Fact]:
         """Select prior facts relevant to this episode via embedding similarity.
 
         For small fact sets (at or below ``consolidation_max_unscoped_facts``),
@@ -349,7 +334,7 @@ class ReflectionRunner:
             return prior_facts
 
         threshold = self._config.reflection.consolidation_similarity_threshold
-        relevant: list["Fact"] = []
+        relevant: list[Fact] = []
 
         for fact in prior_facts:
             if fact.embedding_id is None:
@@ -377,11 +362,11 @@ class ReflectionRunner:
 
     async def _apply_consolidation_actions(
         self,
-        episode: "Episode",
+        episode: Episode,
         actions: list[ConsolidationAction],
-        prior_facts: list["Fact"],
+        prior_facts: list[Fact],
         trace: ReflectionTrace | None = None,
-    ) -> list["Fact"]:
+    ) -> list[Fact]:
         """Process consolidation actions and persist changes.
 
         Returns the list of newly saved facts (ADD + UPDATE replacements).
@@ -391,7 +376,7 @@ class ReflectionRunner:
         from gleanr.models import Fact
 
         prior_by_id = {f.id: f for f in prior_facts}
-        saved_facts: list["Fact"] = []
+        saved_facts: list[Fact] = []
         superseded_facts: list[dict[str, Any]] = []
 
         for action in actions:
@@ -465,13 +450,16 @@ class ReflectionRunner:
                 superseded_old = replace(old_fact, superseded_by=removed_marker)
                 await self._storage.update_fact(superseded_old)
                 superseded_facts.append(
-                    {"id": old_fact.id, "content": old_fact.content, "superseded_by": removed_marker}
+                    {
+                        "id": old_fact.id,
+                        "content": old_fact.content,
+                        "superseded_by": removed_marker,
+                    }
                 )
 
         if trace:
             trace.saved_facts = [
-                {"id": f.id, "content": f.content, "fact_type": f.fact_type}
-                for f in saved_facts
+                {"id": f.id, "content": f.content, "fact_type": f.fact_type} for f in saved_facts
             ]
             trace.superseded_facts = superseded_facts
 
@@ -488,12 +476,12 @@ class ReflectionRunner:
 
     async def _legacy_reflect_and_save(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
+        episode: Episode,
+        turns: list[Turn],
         trace: ReflectionTrace | None = None,
         *,
-        existing_facts: list["Fact"] | None = None,
-    ) -> list["Fact"]:
+        existing_facts: list[Fact] | None = None,
+    ) -> list[Fact]:
         """Original reflection path — extract facts in isolation.
 
         Args:
@@ -515,7 +503,7 @@ class ReflectionRunner:
                 for f in facts
             ]
 
-        saved_facts: list["Fact"] = []
+        saved_facts: list[Fact] = []
         for fact in facts[: self._config.reflection.max_facts_per_episode]:
             if fact.confidence < self._config.reflection.min_confidence:
                 continue
@@ -528,8 +516,7 @@ class ReflectionRunner:
 
         if trace:
             trace.saved_facts = [
-                {"id": f.id, "content": f.content, "fact_type": f.fact_type}
-                for f in saved_facts
+                {"id": f.id, "content": f.content, "fact_type": f.fact_type} for f in saved_facts
             ]
 
         logger.info(
@@ -543,23 +530,16 @@ class ReflectionRunner:
     # Shared helpers
     # ------------------------------------------------------------------
 
-    def _build_trace_header(
-        self, episode: "Episode", turns: list["Turn"]
-    ) -> ReflectionTrace:
+    def _build_trace_header(self, episode: Episode, turns: list[Turn]) -> ReflectionTrace:
         """Create a trace with input metadata populated."""
         return ReflectionTrace(
             episode_id=episode.id,
             mode="unknown",
             input_turn_count=len(turns),
-            input_turns=[
-                {"role": t.role.value, "content": t.content[:200]}
-                for t in turns
-            ],
+            input_turns=[{"role": t.role.value, "content": t.content[:200]} for t in turns],
         )
 
-    def _emit_trace(
-        self, trace: ReflectionTrace | None, start: float
-    ) -> None:
+    def _emit_trace(self, trace: ReflectionTrace | None, start: float) -> None:
         """Finalize and emit a reflection trace."""
         if trace is None or self._trace_callback is None:
             return
@@ -576,9 +556,7 @@ class ReflectionRunner:
         so they no longer appear in recall or consolidation queries.
         """
         max_facts = self._config.reflection.max_active_facts
-        active_facts = await self._storage.get_active_facts_by_session(
-            self._session_id
-        )
+        active_facts = await self._storage.get_active_facts_by_session(self._session_id)
         excess = len(active_facts) - max_facts
         if excess <= 0:
             return
@@ -602,8 +580,8 @@ class ReflectionRunner:
 
     async def _is_duplicate(
         self,
-        new_fact: "Fact",
-        existing_facts: list["Fact"],
+        new_fact: Fact,
+        existing_facts: list[Fact],
     ) -> bool:
         """Check if a new fact is a semantic duplicate of any existing fact.
 
@@ -649,9 +627,9 @@ class ReflectionRunner:
 
     async def _embed_and_save_fact(
         self,
-        fact: "Fact",
-        episode: "Episode",
-    ) -> "Fact":
+        fact: Fact,
+        episode: Episode,
+    ) -> Fact:
         """Count tokens, generate embedding, and save a fact to storage.
 
         Returns the fact (potentially mutated with embedding_id and token_count).

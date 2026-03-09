@@ -28,8 +28,14 @@ logger = logging.getLogger(__name__)
 try:
     from anthropic import (
         APIConnectionError as AnthropicConnectionError,
+    )
+    from anthropic import (
         APITimeoutError as AnthropicTimeoutError,
+    )
+    from anthropic import (
         InternalServerError as AnthropicInternalError,
+    )
+    from anthropic import (
         RateLimitError as AnthropicRateLimitError,
     )
 
@@ -51,7 +57,7 @@ class AnthropicReflector:
 
     def __init__(
         self,
-        client: "AsyncAnthropic",
+        client: AsyncAnthropic,
         model: str = "claude-3-haiku-20240307",
         *,
         max_facts: int = 5,
@@ -78,7 +84,7 @@ class AnthropicReflector:
             retryable_exceptions=_ANTHROPIC_RETRYABLE,
         )
 
-    async def reflect(self, episode: "Episode", turns: list["Turn"]) -> list[Fact]:
+    async def reflect(self, episode: Episode, turns: list[Turn]) -> list[Fact]:
         """Extract semantic facts from an episode.
 
         Args:
@@ -95,9 +101,7 @@ class AnthropicReflector:
             return []
 
         try:
-            turns_text = "\n".join(
-                f"[{t.role.value}]: {t.content}" for t in turns
-            )
+            turns_text = "\n".join(f"[{t.role.value}]: {t.content}" for t in turns)
 
             prompt = REFLECTION_PROMPT.format(
                 turns=turns_text,
@@ -124,14 +128,14 @@ class AnthropicReflector:
                 cause=e,
             ) from e
 
-    def _parse_facts(self, content: str, episode: "Episode") -> list[Fact]:
+    def _parse_facts(self, content: str, episode: Episode) -> list[Fact]:
         """Parse facts from LLM response."""
         return parse_reflection_facts(content, episode)
 
     async def reflect_with_consolidation(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
+        episode: Episode,
+        turns: list[Turn],
         prior_facts: list[Fact],
     ) -> list[ConsolidationAction]:
         """Consolidate prior facts with new episode content."""
@@ -183,6 +187,4 @@ class AnthropicReflector:
 
     @staticmethod
     def _log_retry(attempt: int, error: Exception) -> None:
-        logger.warning(
-            "Anthropic API call failed (attempt %d), retrying: %s", attempt, error
-        )
+        logger.warning("Anthropic API call failed (attempt %d), retrying: %s", attempt, error)

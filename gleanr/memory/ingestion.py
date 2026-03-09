@@ -40,11 +40,11 @@ class IngestionPipeline:
     def __init__(
         self,
         session_id: str,
-        storage: "StorageBackend",
-        embedder: "Embedder",
+        storage: StorageBackend,
+        embedder: Embedder,
         token_counter: TokenCounter,
-        episode_manager: "EpisodeManager",
-        config: "GleanrConfig",
+        episode_manager: EpisodeManager,
+        config: GleanrConfig,
     ) -> None:
         self._session_id = session_id
         self._storage = storage

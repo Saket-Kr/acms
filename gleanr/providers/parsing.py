@@ -56,7 +56,7 @@ def _normalize_fact_type(raw_type: str) -> str:
     return MarkerType.DECISION.value
 
 
-def parse_reflection_facts(content: str, episode: "Episode") -> list[Fact]:
+def parse_reflection_facts(content: str, episode: Episode) -> list[Fact]:
     """Parse standard reflection JSON into Fact objects.
 
     Expected format:
@@ -214,7 +214,7 @@ Respond ONLY with valid JSON, no other text:
 ]}}"""
 
 
-def format_prior_facts(facts: list["Fact"]) -> str:
+def format_prior_facts(facts: list[Fact]) -> str:
     """Format prior facts for inclusion in the consolidation prompt."""
     lines: list[str] = []
     for fact in facts:
@@ -222,6 +222,6 @@ def format_prior_facts(facts: list["Fact"]) -> str:
     return "\n".join(lines)
 
 
-def format_turns(turns: list["Turn"]) -> str:
+def format_turns(turns: list[Turn]) -> str:
     """Format episode turns for inclusion in reflection prompts."""
     return "\n".join(f"[{t.role.value}]: {t.content}" for t in turns)

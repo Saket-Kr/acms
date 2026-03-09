@@ -44,7 +44,7 @@ class Reflector(Protocol):
     for L2 memory.
     """
 
-    async def reflect(self, episode: "Episode", turns: list["Turn"]) -> list["Fact"]:
+    async def reflect(self, episode: Episode, turns: list[Turn]) -> list[Fact]:
         """Extract semantic facts from an episode.
 
         Args:
@@ -76,10 +76,10 @@ class ConsolidatingReflector(Protocol):
 
     async def reflect_with_consolidation(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
-        prior_facts: list["Fact"],
-    ) -> list["ConsolidationAction"]:
+        episode: Episode,
+        turns: list[Turn],
+        prior_facts: list[Fact],
+    ) -> list[ConsolidationAction]:
         """Consolidate prior facts with new episode content.
 
         Args:
@@ -138,6 +138,6 @@ class NullReflector:
     Use when reflection is disabled.
     """
 
-    async def reflect(self, episode: "Episode", turns: list["Turn"]) -> list["Fact"]:
+    async def reflect(self, episode: Episode, turns: list[Turn]) -> list[Fact]:
         """Return empty list (no reflection)."""
         return []

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Awaitable, Callable
+from typing import TYPE_CHECKING
 
 from gleanr.models import Episode, EpisodeStatus, Role, Turn
 from gleanr.utils import generate_episode_id
@@ -28,8 +29,8 @@ class EpisodeManager:
     def __init__(
         self,
         session_id: str,
-        storage: "StorageBackend",
-        config: "GleanrConfig",
+        storage: StorageBackend,
+        config: GleanrConfig,
     ) -> None:
         self._session_id = session_id
         self._storage = storage
@@ -120,10 +121,7 @@ class EpisodeManager:
             return True
 
         # Rule 4: Content patterns
-        if boundary_config.should_close_on_content(turn.content):
-            return True
-
-        return False
+        return bool(boundary_config.should_close_on_content(turn.content))
 
     async def assign_episode(self, turn: Turn) -> str:
         """Assign a turn to an episode.

@@ -175,9 +175,7 @@ class LRUCache(Generic[K, V]):
             return 0
 
         expired_keys = [
-            key
-            for key, entry in self._cache.items()
-            if entry.is_expired(self._ttl_seconds)
+            key for key, entry in self._cache.items() if entry.is_expired(self._ttl_seconds)
         ]
 
         for key in expired_keys:

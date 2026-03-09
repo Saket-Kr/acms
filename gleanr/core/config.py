@@ -24,17 +24,12 @@ class EpisodeBoundaryConfig:
     close_on_tool_result: bool = True
     """Close episode after a tool result."""
 
-    close_on_patterns: tuple[str, ...] = (
-        r"(?i)\b(done|finished|complete|thanks|thank you)\b",
-    )
+    close_on_patterns: tuple[str, ...] = (r"(?i)\b(done|finished|complete|thanks|thank you)\b",)
     """Regex patterns that trigger episode closure."""
 
     def should_close_on_content(self, content: str) -> bool:
         """Check if content matches any closure pattern."""
-        for pattern in self.close_on_patterns:
-            if re.search(pattern, content):
-                return True
-        return False
+        return any(re.search(pattern, content) for pattern in self.close_on_patterns)
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,15 +105,11 @@ class GleanrConfig:
     auto_detect_markers: bool = True
     """Whether to auto-detect markers from content patterns."""
 
-    marker_weights: dict[str, float] = field(
-        default_factory=lambda: dict(DEFAULT_MARKER_WEIGHTS)
-    )
+    marker_weights: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_MARKER_WEIGHTS))
     """Weights for marker types in scoring."""
 
     # Episode settings
-    episode_boundary: EpisodeBoundaryConfig = field(
-        default_factory=EpisodeBoundaryConfig
-    )
+    episode_boundary: EpisodeBoundaryConfig = field(default_factory=EpisodeBoundaryConfig)
     """Episode boundary detection configuration."""
 
     # Recall settings

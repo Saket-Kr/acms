@@ -31,11 +31,11 @@ class RecallPipeline:
     def __init__(
         self,
         session_id: str,
-        storage: "StorageBackend",
-        embedder: "Embedder",
+        storage: StorageBackend,
+        embedder: Embedder,
         token_counter: TokenCounter,
-        episode_manager: "EpisodeManager",
-        config: "GleanrConfig",
+        episode_manager: EpisodeManager,
+        config: GleanrConfig,
     ) -> None:
         self._session_id = session_id
         self._storage = storage
@@ -76,9 +76,7 @@ class RecallPipeline:
 
         marked_candidates = await self._get_marked_candidates(query_embedding)
         fact_candidates = await self._get_fact_candidates(query_embedding)
-        vector_candidates = await self._get_vector_candidates(
-            query_embedding, min_relevance
-        )
+        vector_candidates = await self._get_vector_candidates(query_embedding, min_relevance)
 
         # Step 3: Deduplicate (current episode may overlap with vector results)
         current_ids = {c.id for c in current_episode_candidates}
@@ -218,9 +216,7 @@ class RecallPipeline:
 
     def _turn_to_candidate(self, turn: Turn, relevance: float) -> ScoredCandidate:
         """Convert a turn to a scored candidate."""
-        marker_boost = calculate_marker_boost(
-            turn.markers, self._config.marker_weights
-        )
+        marker_boost = calculate_marker_boost(turn.markers, self._config.marker_weights)
 
         return ScoredCandidate(
             id=turn.id,
@@ -257,18 +253,14 @@ class RecallPipeline:
         remaining_budget = token_budget
 
         # Step 1: Reserve budget for current episode
-        current_budget = int(
-            token_budget * self._config.recall.current_episode_budget_pct
-        )
+        current_budget = int(token_budget * self._config.recall.current_episode_budget_pct)
         current_used = 0
 
         # Handle current episode overflow
         total_current_tokens = sum(c.token_count for c in current_episode)
         if total_current_tokens > current_budget:
             # Keep marked turns and most recent turns
-            current_episode = self._handle_episode_overflow(
-                current_episode, current_budget
-            )
+            current_episode = self._handle_episode_overflow(current_episode, current_budget)
 
         # Add current episode turns (chronological order)
         for candidate in current_episode:
@@ -286,9 +278,7 @@ class RecallPipeline:
                 marked_used += candidate.token_count
             else:
                 # Log warning about marked turns overflow
-                logger.debug(
-                    f"Marked turn {candidate.id} excluded due to budget constraints"
-                )
+                logger.debug(f"Marked turn {candidate.id} excluded due to budget constraints")
 
         remaining_budget -= marked_used
 
@@ -365,7 +355,7 @@ class RecallPipeline:
         if len(a) != len(b):
             return 0.0
 
-        dot_product = sum(x * y for x, y in zip(a, b))
+        dot_product = sum(x * y for x, y in zip(a, b, strict=False))
         norm_a = math.sqrt(sum(x * x for x in a))
         norm_b = math.sqrt(sum(x * x for x in b))
 

@@ -34,7 +34,7 @@ class StorageBackend(ABC):
     # Turn operations
 
     @abstractmethod
-    async def save_turn(self, turn: "Turn") -> None:
+    async def save_turn(self, turn: Turn) -> None:
         """Save a turn to storage.
 
         Args:
@@ -46,7 +46,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_turn(self, turn_id: str) -> "Turn | None":
+    async def get_turn(self, turn_id: str) -> Turn | None:
         """Get a turn by ID.
 
         Args:
@@ -58,7 +58,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_turns_by_episode(self, episode_id: str) -> list["Turn"]:
+    async def get_turns_by_episode(self, episode_id: str) -> list[Turn]:
         """Get all turns for an episode, ordered by position.
 
         Args:
@@ -75,7 +75,7 @@ class StorageBackend(ABC):
         session_id: str,
         *,
         limit: int = 1000,
-    ) -> list["Turn"]:
+    ) -> list[Turn]:
         """Get all turns for a session.
 
         Args:
@@ -93,7 +93,7 @@ class StorageBackend(ABC):
         session_id: str,
         *,
         exclude_episode_id: str | None = None,
-    ) -> list["Turn"]:
+    ) -> list[Turn]:
         """Get all turns with markers (decision, constraint, failure, goal).
 
         Args:
@@ -108,7 +108,7 @@ class StorageBackend(ABC):
     # Episode operations
 
     @abstractmethod
-    async def save_episode(self, episode: "Episode") -> None:
+    async def save_episode(self, episode: Episode) -> None:
         """Save an episode to storage.
 
         Args:
@@ -120,7 +120,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_episode(self, episode_id: str) -> "Episode | None":
+    async def get_episode(self, episode_id: str) -> Episode | None:
         """Get an episode by ID.
 
         Args:
@@ -137,8 +137,8 @@ class StorageBackend(ABC):
         session_id: str,
         *,
         limit: int = 100,
-        status: "EpisodeStatus | None" = None,
-    ) -> list["Episode"]:
+        status: EpisodeStatus | None = None,
+    ) -> list[Episode]:
         """Get episodes for a session.
 
         Args:
@@ -152,7 +152,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def update_episode(self, episode: "Episode") -> None:
+    async def update_episode(self, episode: Episode) -> None:
         """Update an existing episode.
 
         Args:
@@ -203,7 +203,7 @@ class StorageBackend(ABC):
         *,
         k: int = 10,
         filter: dict[str, Any] | None = None,
-    ) -> list["VectorSearchResult"]:
+    ) -> list[VectorSearchResult]:
         """Search for similar vectors.
 
         Args:
@@ -219,7 +219,7 @@ class StorageBackend(ABC):
     # Fact operations (L2)
 
     @abstractmethod
-    async def save_fact(self, fact: "Fact") -> None:
+    async def save_fact(self, fact: Fact) -> None:
         """Save a fact to storage.
 
         Args:
@@ -231,7 +231,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_facts_by_session(self, session_id: str) -> list["Fact"]:
+    async def get_facts_by_session(self, session_id: str) -> list[Fact]:
         """Get all facts for a session.
 
         Args:
@@ -243,7 +243,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_facts_by_episode(self, episode_id: str) -> list["Fact"]:
+    async def get_facts_by_episode(self, episode_id: str) -> list[Fact]:
         """Get facts derived from a specific episode.
 
         Args:
@@ -255,7 +255,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_active_facts_by_session(self, session_id: str) -> list["Fact"]:
+    async def get_active_facts_by_session(self, session_id: str) -> list[Fact]:
         """Get non-superseded facts for a session.
 
         Returns only facts where superseded_by is None, i.e. facts that
@@ -270,7 +270,7 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
-    async def update_fact(self, fact: "Fact") -> None:
+    async def update_fact(self, fact: Fact) -> None:
         """Update an existing fact in storage.
 
         Used during consolidation to set superseded_by on old facts.

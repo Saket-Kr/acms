@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from gleanr.errors import ProviderError
 from gleanr.models import Fact
@@ -59,8 +59,7 @@ class HTTPEmbedder:
             import httpx
         except ImportError as e:
             raise ImportError(
-                "httpx is required for HTTPEmbedder. "
-                "Install with: pip install gleanr[http]"
+                "httpx is required for HTTPEmbedder. Install with: pip install gleanr[http]"
             ) from e
 
         self._base_url = base_url.rstrip("/")
@@ -126,7 +125,6 @@ class HTTPEmbedder:
 
     async def _embed_request(self, texts: list[str]) -> list[list[float]]:
         """Make the actual embedding request."""
-        import httpx
 
         url = f"{self._base_url}/embeddings"
         payload = {
@@ -197,8 +195,7 @@ class HTTPReflector:
             import httpx
         except ImportError as e:
             raise ImportError(
-                "httpx is required for HTTPReflector. "
-                "Install with: pip install gleanr[http]"
+                "httpx is required for HTTPReflector. Install with: pip install gleanr[http]"
             ) from e
 
         self._base_url = base_url.rstrip("/")
@@ -233,7 +230,7 @@ class HTTPReflector:
             headers["Authorization"] = f"Bearer {self._api_key}"
         return headers
 
-    async def reflect(self, episode: "Episode", turns: list["Turn"]) -> list[Fact]:
+    async def reflect(self, episode: Episode, turns: list[Turn]) -> list[Fact]:
         """Extract semantic facts from an episode.
 
         Args:
@@ -266,14 +263,12 @@ class HTTPReflector:
 
     async def _reflect_request(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
+        episode: Episode,
+        turns: list[Turn],
     ) -> list[Fact]:
         """Make the actual reflection request."""
         # Format turns for the prompt
-        turns_text = "\n".join(
-            f"[{t.role.value}]: {t.content}" for t in turns
-        )
+        turns_text = "\n".join(f"[{t.role.value}]: {t.content}" for t in turns)
 
         prompt = REFLECTION_PROMPT.format(
             turns=turns_text,
@@ -305,14 +300,14 @@ class HTTPReflector:
 
         return self._parse_facts(content, episode)
 
-    def _parse_facts(self, content: str, episode: "Episode") -> list[Fact]:
+    def _parse_facts(self, content: str, episode: Episode) -> list[Fact]:
         """Parse facts from LLM response."""
         return parse_reflection_facts(content, episode)
 
     async def reflect_with_consolidation(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
+        episode: Episode,
+        turns: list[Turn],
         prior_facts: list[Fact],
     ) -> list[ConsolidationAction]:
         """Consolidate prior facts with new episode content."""
@@ -337,8 +332,8 @@ class HTTPReflector:
 
     async def _consolidation_request(
         self,
-        episode: "Episode",
-        turns: list["Turn"],
+        episode: Episode,
+        turns: list[Turn],
         prior_facts: list[Fact],
     ) -> list[ConsolidationAction]:
         """Make the actual consolidation request."""
